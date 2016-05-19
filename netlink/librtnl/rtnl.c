@@ -101,9 +101,10 @@ rtnl_cancel_timeout(rtnl_ns_t *ns)
 
 static clib_error_t *rtnl_read_cb(struct unix_file * f)
 {
+  rtnl_main_t *rm = &rtnl_main;
   vlib_main_t *vm = vlib_get_main();
-  rtnl_ns_t *ns = (rtnl_ns_t *) f->private_data;
-  vlib_process_signal_event_pointer(vm, rtnl_process_node.index, RTNL_E_READ, ns);
+  rtnl_ns_t *ns = &rm->streams[f->private_data];
+  vlib_process_signal_event(vm, rtnl_process_node.index, RTNL_E_READ, (uword)(ns - rm->streams));
   return 0;
 }
 
@@ -222,6 +223,7 @@ static void *rtnl_thread_fn(void *p)
 
 static int rtnl_socket_open(rtnl_ns_t *ns)
 {
+  rtnl_main_t *rm = &rtnl_main;
   pthread_t thread;
   void *thread_ret;
   if(pthread_create(&thread, NULL, rtnl_thread_fn, ns)) {
@@ -257,7 +259,7 @@ static int rtnl_socket_open(rtnl_ns_t *ns)
   unix_file_t template = {0};
   template.read_function = rtnl_read_cb;
   template.file_descriptor = ns->rtnl_socket;
-  template.private_data = (uword) ns;
+  template.private_data = (uword) (ns - rm->streams);
   ns->unix_index = unix_file_add (&unix_main, &template);
   return 0;
 }
@@ -442,7 +444,7 @@ rtnl_process_read(rtnl_ns_t *ns)
   while(1) {
     if((len = recv(ns->rtnl_socket, buff, RTNL_BUFFSIZ, MSG_DONTWAIT)) < 0) {
       if(errno != EAGAIN) {
-        clib_warning("rtnetlink recv error: %s", strerror(errno));
+        clib_warning("rtnetlink recv error (%d) [%s]: %s", ns->rtnl_socket, ns->stream.name, strerror(errno));
         return -1;
       }
       return 0;
@@ -506,7 +508,7 @@ rtnl_process (vlib_main_t * vm,
       rtnl_ns_t *ns;
       uword *d;
       vec_foreach(d, event_data) {
-        ns = (rtnl_ns_t *)d[0];
+        ns = &rm->streams[d[0]];
         switch (event_type)
         {
           case RTNL_E_CLOSE:
@@ -558,7 +560,7 @@ rtnl_stream_open(rtnl_stream_t *template)
   ns->state = RTNL_S_INIT;
   ns->ns_fd = fd;
   ns->stream = *template;
-  vlib_process_signal_event_pointer(vm, rtnl_process_node.index, RTNL_E_OPEN, ns);
+  vlib_process_signal_event(vm, rtnl_process_node.index, RTNL_E_OPEN, (uword)(ns - rm->streams));
   return ns - rm->streams;
 }
 
@@ -568,8 +570,7 @@ rtnl_stream_close(u32 stream_index)
   vlib_main_t *vm = vlib_get_main();
   rtnl_main_t *rm = &rtnl_main;
   ASSERT(!pool_is_free_index(rm->streams, stream_index));
-  rtnl_ns_t *ns = pool_elt_at_index(rm->streams, stream_index);
-  vlib_process_signal_event_pointer(vm, rtnl_process_node.index, RTNL_E_CLOSE, ns);
+  vlib_process_signal_event(vm, rtnl_process_node.index, RTNL_E_CLOSE, stream_index);
 }
 
 clib_error_t *

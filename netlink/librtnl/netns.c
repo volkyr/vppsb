@@ -581,7 +581,7 @@ static void
 ns_recv_error(rtnl_error_t err, uword o)
 {
   //An error was received. Reset everything.
-  netns_p *ns = (netns_p *)o;
+  netns_p *ns = &netns_main.netnss[o];
   u32 *indexes = 0;
   u32 *i = 0;
 
@@ -604,7 +604,7 @@ ns_recv_error(rtnl_error_t err, uword o)
 static void
 ns_recv_rtnl(struct nlmsghdr *hdr, uword o)
 {
-  netns_p *ns = (netns_p *)o;
+  netns_p *ns = &netns_main.netnss[o];
   switch (hdr->nlmsg_type) {
     case RTM_NEWROUTE:
     case RTM_DELROUTE:
@@ -657,7 +657,7 @@ netns_get(char *name)
   rtnl_stream_t s = {
       .recv_message = ns_recv_rtnl,
       .error = ns_recv_error,
-      .opaque = (uword)ns,
+      .opaque = (uword)(ns - nm->netnss),
   };
   strcpy(s.name, name);
 
