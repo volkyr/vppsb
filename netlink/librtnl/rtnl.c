@@ -75,6 +75,18 @@ static vlib_node_registration_t rtnl_process_node;
 #define RTNL_BUFFSIZ 16384
 #define RTNL_DUMP_TIMEOUT 1
 
+u8 *format_rtnl_nsname2path(u8 *s, va_list *args)
+{
+  char *nsname = va_arg(*args, char *);
+  if (!nsname || !strlen(nsname)) {
+    return format(s, "/proc/self/ns/net");
+  } else if (strpbrk(nsname, "/") != NULL) {
+    return format(s, "%s", nsname);
+  } else {
+    return format((u8 *)0, "/var/run/netns/%s", nsname);
+  }
+}
+
 static_always_inline void
 rtnl_schedule_timeout(rtnl_ns_t *ns, f64 when)
 {
@@ -177,13 +189,8 @@ int rtnl_exec_in_namespace(u32 stream_index, void *(*fn)(void *), void *arg, voi
 
 int rtnl_exec_in_namespace_by_name(char *nsname, void *(*fn)(void *), void *arg, void **ret)
 {
-  u8 *s;
   int fd;
-  if (nsname && strlen(nsname)) {
-    s = format(0, "/var/run/netns/%s", nsname);
-  } else {
-    s = format(0, "/proc/self/ns/net");
-  }
+  u8 *s = format((u8 *)0, "%U", format_rtnl_nsname2path, nsname);
 
   if ((fd = open((char *)s, O_RDONLY)) < 0) {
     vec_free(s);
@@ -539,13 +546,7 @@ rtnl_stream_open(rtnl_stream_t *template)
   rtnl_main_t *rm = &rtnl_main;
   rtnl_ns_t *ns;
   int fd;
-  u8 *s;
-
-  if (strlen(template->name)) {
-    s = format(0, "/var/run/netns/%s", template->name);
-  } else {
-    s = format(0, "/proc/self/ns/net");
-  }
+  u8 *s = format((u8 *)0, "%U", format_rtnl_nsname2path, template->name);
 
   if ((fd = open((char *)s, O_RDONLY)) < 0) {
     vec_free(s);

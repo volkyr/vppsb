@@ -16,6 +16,8 @@
 #ifndef RTNL_H_
 #define RTNL_H_
 
+#include <vlib/vlib.h>
+
 #include <linux/netlink.h>
 #include <vppinfra/clib.h>
 
@@ -23,7 +25,7 @@ typedef enum {
   RTNL_ERR_UNKNOWN,
 } rtnl_error_t;
 
-#define RTNL_NETNS_NAMELEN 31
+#define RTNL_NETNS_NAMELEN 128
 
 /*
  * RTNL stream implements an RTNL overlay
@@ -52,5 +54,7 @@ void rtnl_stream_close(u32 handle);
  */
 int rtnl_exec_in_namespace(u32 handle, void *(*fn)(void *), void *arg, void **ret);
 int rtnl_exec_in_namespace_by_name(char *nsname, void *(*fn)(void *), void *arg, void **ret);
+
+u8 *format_rtnl_nsname2path(u8 *s, va_list *args);
 
 #endif
