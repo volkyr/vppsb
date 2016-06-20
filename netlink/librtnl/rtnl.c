@@ -32,6 +32,9 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+#undef DBL_MAX
+#define DBL_MAX 1000000000.0
+
 typedef enum {
   RTNL_E_OPEN,
   RTNL_E_CLOSE,
