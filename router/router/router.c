@@ -286,6 +286,7 @@ enum {
 	PROTO_ARP = 0,
 	PROTO_ICMP4,
 	PROTO_OSPF2,
+	PROTO_TCP,
 	PROTO_N_TOTAL,
 };
 
@@ -293,12 +294,14 @@ enum {
 	PROTO_BIT_ARP = 1 << PROTO_ARP,
 	PROTO_BIT_ICMP4 = 1 << PROTO_ICMP4,
 	PROTO_BIT_OSPF2 = 1 << PROTO_OSPF2,
+	PROTO_BIT_TCP = 1 << PROTO_TCP,
 };
 
 static char *proto_strings[PROTO_N_TOTAL] = {
 	[PROTO_ARP] = "arp",
 	[PROTO_ICMP4] = "icmp4",
 	[PROTO_OSPF2] = "ospf2",
+	[PROTO_TCP] = "tcp",
 };
 
 static inline u32 parse_protos(char *proto_string)
@@ -417,6 +420,11 @@ tap_inject(vlib_main_t *m, unformat_input_t *input, vlib_cli_command_t *cmd)
 			return clib_error_return(0,
 				"ospf2 requires arp and icmp4");
 
+	if (protos & PROTO_BIT_TCP) /* Require arp and icmp4 for tcp. */
+		if (!(protos & PROTO_BIT_ARP) || !(protos & PROTO_BIT_ICMP4))
+			return clib_error_return(0,
+				"tcp requires arp and icmp4");
+
 	err = do_tap_connect(m, name, iface, &tap);
 	if (err) {
 		if (tap != ~0)
@@ -451,7 +459,11 @@ tap_inject(vlib_main_t *m, unformat_input_t *input, vlib_cli_command_t *cmd)
 
 	if (protos & PROTO_BIT_OSPF2)
 		ip4_register_protocol(IP_PROTOCOL_OSPF,
-		                      tap_inject_icmp_node.index);
+		                      tap_inject_classified_node.index);
+
+	if (protos & PROTO_BIT_TCP)
+		ip4_register_protocol(IP_PROTOCOL_TCP,
+		                      tap_inject_classified_node.index);
 
 	/* Find sw_if_index of tap associated with data plane interface. */
 	rm.iface_to_tap[iface] = tap;
