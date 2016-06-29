@@ -36,11 +36,8 @@ $ cd build-root
 $ ./bootstrap.sh
 $ make V=0 PLATFORM=vpp TAG=vpp_debug router-install
 $ ln -sf /git/vpp/build-root/install-vpp_debug-native/router/lib64/router.so.0.0.0 \
-         /usr/lib/vpp_plugins/
+         /usr/lib/vpp_plugins/router.so
 ```
-
-NOTE: The 'make' command above may fail twice when building netlink. If an
-error occurs, retry the make command two more times.
 
 Once VPP is running and the plugin is loaded, data plane interfaces can
 be tapped.
