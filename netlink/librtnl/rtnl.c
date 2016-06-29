@@ -86,7 +86,7 @@ u8 *format_rtnl_nsname2path(u8 *s, va_list *args)
   } else if (strpbrk(nsname, "/") != NULL) {
     return format(s, "%s", nsname);
   } else {
-    return format((u8 *)0, "/var/run/netns/%s", nsname);
+    return format(s, "/var/run/netns/%s", nsname);
   }
 }
 
@@ -552,8 +552,10 @@ rtnl_stream_open(rtnl_stream_t *template)
   rtnl_ns_t *ns;
   int fd;
   u8 *s = format((u8 *)0, "%U", format_rtnl_nsname2path, template->name);
+  vec_add1(s, 0);
 
   if ((fd = open((char *)s, O_RDONLY)) < 0) {
+    clib_unix_warning("open stream %s: ", s);
     vec_free(s);
     return ~0;
   }

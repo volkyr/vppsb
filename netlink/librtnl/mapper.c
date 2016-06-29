@@ -63,7 +63,6 @@ int mapper_add_del_route(mapper_ns_t *ns, ns_route_t *route, int del)
     if (route->rtm.rtm_dst_len >= 8 && route->dst[0] == 0xff)
       return 0;
 
-    clib_warning("Adding v6 route");
     struct ip6_main_t *im = &ip6_main;
     ip6_add_del_route_next_hop(im, //ip6_main
                                del?IP6_ROUTE_FLAG_DEL:IP6_ROUTE_FLAG_ADD,  //flags (not del)
@@ -75,7 +74,6 @@ int mapper_add_del_route(mapper_ns_t *ns, ns_route_t *route, int del)
                                ~0, //adj_index
                                ns->v6fib_index);
   } else {
-    clib_warning("Adding v4 route");
     struct ip4_main_t *im = &ip4_main;
     ip4_add_del_route_next_hop(im, //ip4_main
                                del?IP4_ROUTE_FLAG_DEL:IP4_ROUTE_FLAG_ADD,  //flags (not del)
