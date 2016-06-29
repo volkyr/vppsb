@@ -26,33 +26,21 @@
 #include <vnet/ethernet/arp_packet.h>
 
 enum {
-	NEXT_ARP = 0,
-	NEXT_ICMP = 0,
-	NEXT_INJECT_ARP_ICMP,
+	NEXT_UNTAPPED = 0,
+	NEXT_INJECT,
 };
 
 enum {
-	NEXT_DROP,
-	NEXT_INJECT_CLASSIFIED,
-};
-
-enum {
-	ERROR_DROP = 0,
 	ERROR_INJECT_ARP,
 	ERROR_INJECT_ICMP,
 	ERROR_INJECT_CLASSIFIED,
 };
 
 static char *error_strings[] = {
-	[ERROR_DROP] = "Untapped interface",
 	[ERROR_INJECT_ARP] = "Inject ARP",
 	[ERROR_INJECT_ICMP] = "Inject ICMP",
 	[ERROR_INJECT_CLASSIFIED] = "Inject Classified",
 };
-
-vlib_node_registration_t tap_inject_arp_node;
-vlib_node_registration_t tap_inject_icmp_node;
-vlib_node_registration_t tap_inject_classified_node;
 
 struct tap_to_iface {
 	u32 tap;
@@ -67,6 +55,191 @@ struct router_main {
 };
 
 static struct router_main rm;
+
+vlib_node_registration_t tap_inject_arp_node;
+vlib_node_registration_t tap_inject_icmp_node;
+vlib_node_registration_t tap_inject_classified_node;
+
+static inline void
+update_arp_entry(vlib_buffer_t *b0, ethernet_arp_header_t *arp, u32 vlib_rx)
+{
+	ethernet_header_t *eth;
+	ip4_address_t *if_addr;
+	ip_interface_address_t *ifa;
+
+	if (arp->l2_type != ntohs(ETHERNET_ARP_HARDWARE_TYPE_ethernet) ||
+	    arp->l3_type != ntohs(ETHERNET_TYPE_IP4))
+		return;
+
+	/* Check that IP address is local and matches incoming interface. */
+	if_addr = ip4_interface_address_matching_destination(&ip4_main,
+				&arp->ip4_over_ethernet[1].ip4,
+				vlib_rx, &ifa);
+	if (!if_addr)
+		return;
+
+	/* Source must also be local to subnet of matching interface address. */
+	if (!ip4_destination_matches_interface(&ip4_main,
+				&arp->ip4_over_ethernet[0].ip4, ifa))
+		return;
+
+	/* Reject replies with our local interface address. */
+	if (if_addr->as_u32 == arp->ip4_over_ethernet[0].ip4.as_u32)
+		return;
+
+	if (if_addr->as_u32 != arp->ip4_over_ethernet[1].ip4.as_u32)
+		return;
+
+	eth = ethernet_buffer_get_header(b0);
+
+	/* Trash ARP packets whose ARP-level source addresses do not
+	 * match their L2-frame-level source addresses */
+	if (memcmp(eth->src_address, arp->ip4_over_ethernet[0].ethernet,
+	           sizeof(eth->src_address)))
+		return;
+
+	if (arp->ip4_over_ethernet[0].ip4.as_u32 == 0 ||
+	    (arp->ip4_over_ethernet[0].ip4.as_u32 ==
+	     arp->ip4_over_ethernet[1].ip4.as_u32))
+		return;
+
+	/* Learn or update sender's mapping only for requests or unicasts
+	 * that don't match local interface address. */
+	if (ethernet_address_cast(eth->dst_address) != ETHERNET_ADDRESS_UNICAST)
+		return;
+
+	vnet_arp_set_ip4_over_ethernet(rm.vnet_main, vlib_rx, ~0,
+		                       &arp->ip4_over_ethernet[0], 0);
+}
+
+static uword
+tap_inject_func(vlib_main_t *m, vlib_node_runtime_t *node, vlib_frame_t *f,
+                int mode)
+{
+	u32 n_left_from = f->n_vectors;
+	u32 *from = vlib_frame_vector_args(f);
+	u32 next_index = node->cached_next_index;
+	u32 *to_next;
+	u32 counter, count = 0;
+
+	while (n_left_from) {
+		vlib_buffer_t *b0;
+		u32 next0, bi0, n_left;
+		u32 vlib_rx, vlib_tx;
+
+		vlib_get_next_frame(m, node, next_index, to_next, n_left);
+
+		*(to_next++) = bi0 = *(from++);
+		--n_left_from;
+		--n_left;
+
+		b0 = vlib_get_buffer(m, bi0);
+
+		vlib_rx = vnet_buffer(b0)->sw_if_index[VLIB_RX];
+		vlib_tx = rm.iface_to_tap[vlib_rx];
+
+		if (vlib_tx == 0 || vlib_tx == ~0) {
+			next0 = NEXT_UNTAPPED;
+			goto untapped;
+		}
+
+		next0 = NEXT_INJECT;
+		vnet_buffer(b0)->sw_if_index[VLIB_TX] = vlib_tx;
+		++count;
+
+		if (mode == ERROR_INJECT_ARP) {
+			ethernet_arp_header_t *arphdr;
+
+			arphdr = vlib_buffer_get_current(b0);
+			if (arphdr->opcode == ntohs(ETHERNET_ARP_OPCODE_reply))
+				update_arp_entry(b0, arphdr, vlib_rx);
+		}
+
+		/* FIXME: What about VLAN? */
+		b0->current_data -= sizeof(ethernet_header_t);
+		b0->current_length += sizeof(ethernet_header_t);
+
+untapped:
+		vlib_validate_buffer_enqueue_x1(m, node, next_index, to_next,
+		                                n_left, bi0, next0);
+		vlib_put_next_frame(m, node, next_index, n_left);
+	}
+
+	switch (mode) {
+	case ERROR_INJECT_ARP:
+		counter = ERROR_INJECT_ARP;
+		break;
+	case ERROR_INJECT_ICMP:
+		counter = ERROR_INJECT_ICMP;
+		break;
+	default:
+		counter = ERROR_INJECT_CLASSIFIED;
+	}
+
+	vlib_node_increment_counter(m, node->node_index, counter, count);
+	return f->n_vectors;
+}
+
+static uword
+tap_inject_arp(vlib_main_t *m, vlib_node_runtime_t *node, vlib_frame_t *f)
+{
+	return tap_inject_func(m, node, f, ERROR_INJECT_ARP);
+}
+
+VLIB_REGISTER_NODE(tap_inject_arp_node) = {
+	.function = tap_inject_arp,
+	.name = "tap-inject-arp",
+	.vector_size = sizeof(u32),
+	.type = VLIB_NODE_TYPE_INTERNAL,
+	.n_errors = ARRAY_LEN(error_strings),
+	.error_strings = error_strings,
+	.n_next_nodes = 2,
+	.next_nodes = {
+		[NEXT_UNTAPPED] = "arp-input",
+		[NEXT_INJECT] = "interface-output",
+	},
+};
+
+static uword
+tap_inject_icmp(vlib_main_t *m, vlib_node_runtime_t *node, vlib_frame_t *f)
+{
+	return tap_inject_func(m, node, f, ERROR_INJECT_ICMP);
+}
+
+VLIB_REGISTER_NODE(tap_inject_icmp_node) = {
+	.function = tap_inject_icmp,
+	.name = "tap-inject-icmp",
+	.vector_size = sizeof(u32),
+	.type = VLIB_NODE_TYPE_INTERNAL,
+	.n_errors = ARRAY_LEN(error_strings),
+	.error_strings = error_strings,
+	.n_next_nodes = 2,
+	.next_nodes = {
+		[NEXT_UNTAPPED] = "ip4-icmp-input",
+		[NEXT_INJECT] = "interface-output",
+	},
+};
+
+static uword
+tap_inject_classified(vlib_main_t *m, vlib_node_runtime_t *node,
+                      vlib_frame_t *f)
+{
+	return tap_inject_func(m, node, f, ERROR_INJECT_CLASSIFIED);
+}
+
+VLIB_REGISTER_NODE(tap_inject_classified_node) = {
+	.function = tap_inject_classified,
+	.name = "tap-inject-classified",
+	.vector_size = sizeof(u32),
+	.type = VLIB_NODE_TYPE_INTERNAL,
+	.n_errors = ARRAY_LEN(error_strings),
+	.error_strings = error_strings,
+	.n_next_nodes = 2,
+	.next_nodes = {
+		[NEXT_UNTAPPED] = "error-drop",
+		[NEXT_INJECT] = "interface-output",
+	},
+};
 
 static int
 set_tap_hwaddr(vlib_main_t *m, char *name, u8 *hwaddr)
@@ -295,142 +468,6 @@ VLIB_CLI_COMMAND(tap_inject_command, static) = {
 	.function = tap_inject,
 };
 
-static uword
-tap_inject_arp_icmp(vlib_main_t *m, vlib_node_runtime_t *node,
-                    vlib_frame_t *f, int arp)
-{
-	u32 n_left_from = f->n_vectors;
-	u32 *from = vlib_frame_vector_args(f);
-	u32 next_index = node->cached_next_index;
-	u32 *to_next;
-	u32 me = arp ? tap_inject_arp_node.index : tap_inject_icmp_node.index;
-
-	while (n_left_from) {
-		vlib_buffer_t *b0;
-		u32 next0;
-		u32 bi0;
-		u32 n_left_to_next;
-		u32 vlib_rx, vlib_tx;
-		u32 counter;
-
-		vlib_get_next_frame(m, node, next_index, to_next,
-		                    n_left_to_next);
-
-		*(to_next++) = bi0 = *(from++);
-		--n_left_from;
-		--n_left_to_next;
-
-		b0 = vlib_get_buffer(m, bi0);
-
-		/* FIXME: What about VLAN? */
-		b0->current_data -= sizeof(ethernet_header_t);
-		b0->current_length += sizeof(ethernet_header_t);
-
-		vlib_rx = vnet_buffer(b0)->sw_if_index[VLIB_RX];
-		vlib_tx = rm.iface_to_tap[vlib_rx];
-		vnet_buffer(b0)->sw_if_index[VLIB_TX] = vlib_tx;
-
-		if (vlib_tx == 0 || vlib_tx == ~0)
-			next0 = arp ? NEXT_ARP : NEXT_ICMP;
-		else {
-			next0 = NEXT_INJECT_ARP_ICMP;
-			counter = arp ? ERROR_INJECT_ARP : ERROR_INJECT_ICMP;
-			vlib_node_increment_counter(m, me, counter, 1);
-		}
-
-		vlib_validate_buffer_enqueue_x1(m, node, next_index, to_next,
-		                                n_left_to_next, bi0, next0);
-		vlib_put_next_frame(m, node, next_index, n_left_to_next);
-	}
-	return f->n_vectors;
-}
-
-static uword
-tap_inject_icmp(vlib_main_t *m, vlib_node_runtime_t *node, vlib_frame_t *f)
-{
-	return tap_inject_arp_icmp(m, node, f, 0 /* ICMP */);
-}
-
-VLIB_REGISTER_NODE(tap_inject_icmp_node) = {
-	.function = tap_inject_icmp,
-	.name = "tap-inject-icmp",
-	.vector_size = sizeof(u32),
-	.type = VLIB_NODE_TYPE_INTERNAL,
-	.n_errors = ARRAY_LEN(error_strings),
-	.error_strings = error_strings,
-	.n_next_nodes = 2,
-	.next_nodes = {
-		[NEXT_ICMP] = "ip4-icmp-input",
-		[NEXT_INJECT_ARP_ICMP] = "interface-output",
-	},
-};
-
-static uword
-tap_inject_classified(vlib_main_t *m, vlib_node_runtime_t *node,
-                      vlib_frame_t *f)
-{
-	u32 n_left_from = f->n_vectors;
-	u32 *from = vlib_frame_vector_args(f);
-	u32 next_index = node->cached_next_index;
-	u32 *to_next;
-	u32 out = 0, drop = 0;
-
-	while (n_left_from) {
-		vlib_buffer_t *b0;
-		u32 next0;
-		u32 bi0;
-		u32 n_left_to_next;
-		u32 vlib_rx, vlib_tx;
-
-		vlib_get_next_frame(m, node, next_index, to_next,
-		                    n_left_to_next);
-
-		*(to_next++) = bi0 = *(from++);
-		--n_left_from;
-		--n_left_to_next;
-
-		b0 = vlib_get_buffer(m, bi0);
-
-		/* FIXME: What about VLAN? */
-		b0->current_data -= sizeof(ethernet_header_t);
-		b0->current_length += sizeof(ethernet_header_t);
-
-		vlib_rx = vnet_buffer(b0)->sw_if_index[VLIB_RX];
-		vlib_tx = rm.iface_to_tap[vlib_rx];
-		vnet_buffer(b0)->sw_if_index[VLIB_TX] = vlib_tx;
-
-		if (vlib_tx == 0 || vlib_tx == ~0) {
-			next0 = NEXT_DROP;
-			++drop;
-		} else {
-			next0 = NEXT_INJECT_CLASSIFIED;
-			++out;
-		}
-		vlib_validate_buffer_enqueue_x1(m, node, next_index, to_next,
-		                                n_left_to_next, bi0, next0);
-		vlib_put_next_frame(m, node, next_index, n_left_to_next);
-	}
-	vlib_node_increment_counter(m, tap_inject_classified_node.index,
-	                            ERROR_DROP, drop);
-	vlib_node_increment_counter(m, tap_inject_classified_node.index,
-	                            ERROR_INJECT_CLASSIFIED, out);
-	return f->n_vectors;
-}
-
-VLIB_REGISTER_NODE(tap_inject_classified_node) = {
-	.function = tap_inject_classified,
-	.name = "tap-inject-classified",
-	.vector_size = sizeof(u32),
-	.type = VLIB_NODE_TYPE_INTERNAL,
-	.n_errors = ARRAY_LEN(error_strings),
-	.error_strings = error_strings,
-	.n_next_nodes = 2,
-	.next_nodes = {
-		[NEXT_DROP] = "error-drop",
-		[NEXT_INJECT_CLASSIFIED] = "interface-output",
-	},
-};
-
 static clib_error_t *
 interface_add_del(struct vnet_main_t *m, u32 hw_if_index, u32 add)
 {
@@ -457,123 +494,3 @@ static clib_error_t *router_init(vlib_main_t *m)
 	return 0;
 }
 VLIB_INIT_FUNCTION(router_init);
-
-static inline void
-update_arp_entry(vlib_buffer_t *b0, ethernet_arp_header_t *arp, u32 vlib_rx)
-{
-	ethernet_header_t *eth;
-	ip4_address_t *if_addr;
-	ip_interface_address_t *ifa;
-
-	if (arp->l2_type != ntohs(ETHERNET_ARP_HARDWARE_TYPE_ethernet) ||
-	    arp->l3_type != ntohs(ETHERNET_TYPE_IP4))
-		return;
-
-	/* Check that IP address is local and matches incoming interface. */
-	if_addr = ip4_interface_address_matching_destination(&ip4_main,
-				&arp->ip4_over_ethernet[1].ip4,
-				vlib_rx, &ifa);
-	if (!if_addr)
-		return;
-
-	/* Source must also be local to subnet of matching interface address. */
-	if (!ip4_destination_matches_interface(&ip4_main,
-				&arp->ip4_over_ethernet[0].ip4, ifa))
-		return;
-
-	/* Reject replies with our local interface address. */
-	if (if_addr->as_u32 == arp->ip4_over_ethernet[0].ip4.as_u32)
-		return;
-
-	if (if_addr->as_u32 != arp->ip4_over_ethernet[1].ip4.as_u32)
-		return;
-
-	eth = ethernet_buffer_get_header(b0);
-
-	/* Trash ARP packets whose ARP-level source addresses do not
-	 * match their L2-frame-level source addresses */
-	if (memcmp(eth->src_address, arp->ip4_over_ethernet[0].ethernet,
-	           sizeof(eth->src_address)))
-		return;
-
-	if (arp->ip4_over_ethernet[0].ip4.as_u32 == 0 ||
-	    (arp->ip4_over_ethernet[0].ip4.as_u32 ==
-	     arp->ip4_over_ethernet[1].ip4.as_u32))
-		return;
-
-	/* Learn or update sender's mapping only for requests or unicasts
-	 * that don't match local interface address. */
-	if (ethernet_address_cast(eth->dst_address) != ETHERNET_ADDRESS_UNICAST)
-		return;
-
-	vnet_arp_set_ip4_over_ethernet(rm.vnet_main, vlib_rx, ~0,
-		                       &arp->ip4_over_ethernet[0], 0);
-}
-
-static uword
-tap_inject_arp(vlib_main_t *m, vlib_node_runtime_t *node, vlib_frame_t *f)
-{
-	u32 n_left_from = f->n_vectors;
-	u32 *from = vlib_frame_vector_args(f);
-	u32 next_index = node->cached_next_index;
-	u32 *to_next;
-	u32 out = 0;
-
-	while (n_left_from) {
-		vlib_buffer_t *b0;
-		u32 next0, bi0, n_left;
-		u32 vlib_rx, vlib_tx;
-		ethernet_arp_header_t *arp;
-
-		vlib_get_next_frame(m, node, next_index, to_next, n_left);
-
-		*(to_next++) = bi0 = *(from++);
-		--n_left_from;
-		--n_left;
-
-		b0 = vlib_get_buffer(m, bi0);
-		arp = vlib_buffer_get_current(b0);
-
-		/* FIXME: What about VLAN? */
-		b0->current_data -= sizeof(ethernet_header_t);
-		b0->current_length += sizeof(ethernet_header_t);
-
-		vlib_rx = vnet_buffer(b0)->sw_if_index[VLIB_RX];
-		vlib_tx = rm.iface_to_tap[vlib_rx];
-		vnet_buffer(b0)->sw_if_index[VLIB_TX] = vlib_tx;
-
-		if (vlib_tx == 0 || vlib_tx == ~0)
-			next0 = NEXT_ARP;
-		else {
-			next0 = NEXT_INJECT_ARP_ICMP;
-			++out;
-		}
-
-		/* Add an ARP entry for injected replies. */
-		if (next0 == NEXT_INJECT_ARP_ICMP &&
-		    arp->opcode == ntohs(ETHERNET_ARP_OPCODE_reply))
-			update_arp_entry(b0, arp, vlib_rx);
-
-		vlib_validate_buffer_enqueue_x1(m, node, next_index, to_next,
-		                                n_left, bi0, next0);
-		vlib_put_next_frame(m, node, next_index, n_left);
-	}
-
-	vlib_node_increment_counter(m, tap_inject_arp_node.index,
-	                            ERROR_INJECT_ARP, out);
-	return f->n_vectors;
-}
-
-VLIB_REGISTER_NODE(tap_inject_arp_node) = {
-	.function = tap_inject_arp,
-	.name = "tap-inject-arp",
-	.vector_size = sizeof(u32),
-	.type = VLIB_NODE_TYPE_INTERNAL,
-	.n_errors = ARRAY_LEN(error_strings),
-	.error_strings = error_strings,
-	.n_next_nodes = 2,
-	.next_nodes = {
-		[NEXT_ARP] = "arp-input",
-		[NEXT_INJECT_ARP_ICMP] = "interface-output",
-	},
-};
