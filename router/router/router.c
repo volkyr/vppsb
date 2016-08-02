@@ -50,11 +50,56 @@ struct tap_to_iface {
 struct router_main {
 	vnet_main_t *vnet_main;
 	u32 *iface_to_tap;
+	u32 *iface_to_protos;
 	struct tap_to_iface *tap_to_iface;
 	u32 ns_index;
 };
 
 static struct router_main rm;
+
+enum {
+	PROTO_ARP = 0,
+	PROTO_ICMP4,
+	PROTO_OSPF2,
+	PROTO_TCP,
+	PROTO_N_TOTAL,
+};
+
+enum {
+	PROTO_BIT_ARP = 1 << PROTO_ARP,
+	PROTO_BIT_ICMP4 = 1 << PROTO_ICMP4,
+	PROTO_BIT_OSPF2 = 1 << PROTO_OSPF2,
+	PROTO_BIT_TCP = 1 << PROTO_TCP,
+};
+
+static char *proto_strings[PROTO_N_TOTAL] = {
+	[PROTO_ARP] = "arp",
+	[PROTO_ICMP4] = "icmp4",
+	[PROTO_OSPF2] = "ospf2",
+	[PROTO_TCP] = "tcp",
+};
+
+static inline u32 parse_protos(char *proto_string)
+{
+	u32 protos = 0;
+	char *tok, **proto;
+
+	for (tok = strtok(proto_string, ","); tok; tok = strtok(NULL, ","))
+		for (proto = proto_strings; proto && *proto; ++proto)
+			if (!strncmp(tok, *proto, 16))
+				protos |= 1 << (proto - proto_strings);
+	return protos;
+}
+
+static uword unformat_protos(unformat_input_t *input, va_list *args)
+{
+	u32 *protos = va_arg(*args, u32 *);
+	u8 *proto_string;
+
+	if (unformat(input, "%s", &proto_string))
+		*protos = parse_protos((char *)proto_string);
+	return 1;
+}
 
 vlib_node_registration_t tap_inject_arp_node;
 vlib_node_registration_t tap_inject_icmp_node;
@@ -126,6 +171,7 @@ tap_inject_func(vlib_main_t *m, vlib_node_runtime_t *node, vlib_frame_t *f,
 		vlib_buffer_t *b0;
 		u32 next0, bi0, n_left;
 		u32 vlib_rx, vlib_tx;
+		u32 protos, proto_bit = 0;
 
 		vlib_get_next_frame(m, node, next_index, to_next, n_left);
 
@@ -137,13 +183,32 @@ tap_inject_func(vlib_main_t *m, vlib_node_runtime_t *node, vlib_frame_t *f,
 
 		vlib_rx = vnet_buffer(b0)->sw_if_index[VLIB_RX];
 		vlib_tx = rm.iface_to_tap[vlib_rx];
+		protos = rm.iface_to_protos[vlib_rx];
 
-		if (vlib_tx == 0 || vlib_tx == ~0) {
-			next0 = NEXT_UNTAPPED;
+		next0 = NEXT_UNTAPPED;
+
+		if (vlib_tx == 0 || vlib_tx == ~0 || protos == 0)
 			goto untapped;
+
+		if (mode == ERROR_INJECT_CLASSIFIED) {
+			ip4_header_t *iphdr;
+
+			iphdr = vlib_buffer_get_current(b0);
+			if (iphdr->protocol == IP_PROTOCOL_TCP)
+				proto_bit = PROTO_BIT_TCP;
+			else if (iphdr->protocol == IP_PROTOCOL_OSPF)
+				proto_bit = PROTO_BIT_OSPF2;
+		} else if (mode == ERROR_INJECT_ARP) {
+			proto_bit = PROTO_BIT_ARP;
+		} else if (mode == ERROR_INJECT_ICMP) {
+			proto_bit = PROTO_BIT_ICMP4;
 		}
 
+		if (!(protos & proto_bit))
+			goto untapped;
+
 		next0 = NEXT_INJECT;
+
 		vnet_buffer(b0)->sw_if_index[VLIB_TX] = vlib_tx;
 		++count;
 
@@ -280,50 +345,6 @@ do_tap_connect(vlib_main_t *m, char *name, u32 iface, u32 *tap)
 
 	return vnet_sw_interface_set_flags(rm.vnet_main, *tap,
 	                                   VNET_SW_INTERFACE_FLAG_ADMIN_UP);
-}
-
-enum {
-	PROTO_ARP = 0,
-	PROTO_ICMP4,
-	PROTO_OSPF2,
-	PROTO_TCP,
-	PROTO_N_TOTAL,
-};
-
-enum {
-	PROTO_BIT_ARP = 1 << PROTO_ARP,
-	PROTO_BIT_ICMP4 = 1 << PROTO_ICMP4,
-	PROTO_BIT_OSPF2 = 1 << PROTO_OSPF2,
-	PROTO_BIT_TCP = 1 << PROTO_TCP,
-};
-
-static char *proto_strings[PROTO_N_TOTAL] = {
-	[PROTO_ARP] = "arp",
-	[PROTO_ICMP4] = "icmp4",
-	[PROTO_OSPF2] = "ospf2",
-	[PROTO_TCP] = "tcp",
-};
-
-static inline u32 parse_protos(char *proto_string)
-{
-	u32 protos = 0;
-	char *tok, **proto;
-
-	for (tok = strtok(proto_string, ","); tok; tok = strtok(NULL, ","))
-		for (proto = proto_strings; proto && *proto; ++proto)
-			if (!strncmp(tok, *proto, 16))
-				protos |= 1 << (proto - proto_strings);
-	return protos;
-}
-
-static uword unformat_protos(unformat_input_t *input, va_list *args)
-{
-	u32 *protos = va_arg(*args, u32 *);
-	u8 *proto_string;
-
-	if (unformat(input, "%s", &proto_string))
-		*protos = parse_protos((char *)proto_string);
-	return 1;
 }
 
 static void add_del_addr(ns_addr_t *a, int is_del)
@@ -467,6 +488,7 @@ tap_inject(vlib_main_t *m, unformat_input_t *input, vlib_cli_command_t *cmd)
 
 	/* Find sw_if_index of tap associated with data plane interface. */
 	rm.iface_to_tap[iface] = tap;
+	rm.iface_to_protos[iface] = protos;
 
 	/* Find data plane interface associated with host tap ifindex. */
 	insert_tap_to_iface(if_nametoindex(name), iface);
@@ -488,7 +510,9 @@ interface_add_del(struct vnet_main_t *m, u32 hw_if_index, u32 add)
 	ASSERT(hw->sw_if_index == sw->sw_if_index);
 
 	vec_validate(rm.iface_to_tap, sw->sw_if_index);
+	vec_validate(rm.iface_to_protos, sw->sw_if_index);
 	rm.iface_to_tap[sw->sw_if_index] = ~0;
+	rm.iface_to_protos[sw->sw_if_index] = 0;
 	return 0;
 }
 VNET_HW_INTERFACE_ADD_DEL_FUNCTION(interface_add_del);
