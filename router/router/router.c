@@ -60,6 +60,7 @@ static struct router_main rm;
 enum {
 	PROTO_ARP = 0,
 	PROTO_ICMP4,
+	PROTO_IGMP4,
 	PROTO_OSPF2,
 	PROTO_TCP,
 	PROTO_N_TOTAL,
@@ -68,6 +69,7 @@ enum {
 enum {
 	PROTO_BIT_ARP = 1 << PROTO_ARP,
 	PROTO_BIT_ICMP4 = 1 << PROTO_ICMP4,
+	PROTO_BIT_IGMP4 = 1 << PROTO_IGMP4,
 	PROTO_BIT_OSPF2 = 1 << PROTO_OSPF2,
 	PROTO_BIT_TCP = 1 << PROTO_TCP,
 };
@@ -75,6 +77,7 @@ enum {
 static char *proto_strings[PROTO_N_TOTAL] = {
 	[PROTO_ARP] = "arp",
 	[PROTO_ICMP4] = "icmp4",
+	[PROTO_IGMP4] = "igmp4",
 	[PROTO_OSPF2] = "ospf2",
 	[PROTO_TCP] = "tcp",
 };
@@ -198,6 +201,8 @@ tap_inject_func(vlib_main_t *m, vlib_node_runtime_t *node, vlib_frame_t *f,
 				proto_bit = PROTO_BIT_TCP;
 			else if (iphdr->protocol == IP_PROTOCOL_OSPF)
 				proto_bit = PROTO_BIT_OSPF2;
+			else if (iphdr->protocol == IP_PROTOCOL_IGMP)
+				proto_bit = PROTO_BIT_IGMP4;
 		} else if (mode == ERROR_INJECT_ARP) {
 			proto_bit = PROTO_BIT_ARP;
 		} else if (mode == ERROR_INJECT_ICMP) {
@@ -407,6 +412,53 @@ static void insert_tap_to_iface(u32 tap, u32 iface)
 	vec_add1(rm.tap_to_iface, map);
 }
 
+
+static u32 ip4_next_index = ~0;
+
+static u32
+ip4_lookup_next_index(void)
+{
+	if (ip4_next_index == ~0) {
+		ip4_next_index = vlib_node_add_next(vlib_get_main(),
+			ip4_lookup_node.index,
+			tap_inject_classified_node.index);
+	}
+
+	return ip4_next_index;
+}
+
+static u32 ip4_multicast_arc_added;
+
+static void
+add_ip4_multicast_arc(void)
+{
+	ip4_add_del_route_args_t a;
+	ip_adjacency_t add_adj;
+
+	if (ip4_multicast_arc_added)
+		return;
+
+	memset(&a, 0, sizeof(a));
+	memset(&add_adj, 0, sizeof(add_adj));
+
+	a.add_adj = &add_adj;
+	a.n_add_adj = 1;
+
+	a.flags = IP4_ROUTE_FLAG_TABLE_ID | IP4_ROUTE_FLAG_ADD;
+	a.table_index_or_table_id = 0;
+	a.dst_address.as_u32 = 0x000000E0; /* 224.0.0.0 */
+	a.dst_address_length = 24;
+	a.adj_index = ~0;
+
+	add_adj.explicit_fib_index = ~0;
+	add_adj.rewrite_header.node_index = ip4_rewrite_node.index;
+	add_adj.lookup_next_index = ip4_lookup_next_index();
+	add_adj.if_address_index = ~0;
+
+	ip4_add_del_route(&ip4_main, &a);
+	ip4_multicast_arc_added = 1;
+}
+
 static clib_error_t *
 tap_inject(vlib_main_t *m, unformat_input_t *input, vlib_cli_command_t *cmd)
 {
@@ -436,10 +488,14 @@ tap_inject(vlib_main_t *m, unformat_input_t *input, vlib_cli_command_t *cmd)
 		return clib_error_return(0,
 				"host interface name is missing or invalid");
 
-	if (protos & PROTO_BIT_OSPF2) /* Require arp and icmp4 for ospf2. */
-		if (!(protos & PROTO_BIT_ARP) || !(protos & PROTO_BIT_ICMP4))
+	if (protos & PROTO_BIT_OSPF2) {
+		/* Require arp, icmp4, and igmp4 for ospf2. */
+		if (!(protos & PROTO_BIT_ARP) ||
+		    !(protos & PROTO_BIT_ICMP4) ||
+		    !(protos & PROTO_BIT_IGMP4))
 			return clib_error_return(0,
-				"ospf2 requires arp and icmp4");
+				"ospf2 requires arp, icmp4, and igmp4");
+	}
 
 	if (protos & PROTO_BIT_TCP) /* Require arp and icmp4 for tcp. */
 		if (!(protos & PROTO_BIT_ARP) || !(protos & PROTO_BIT_ICMP4))
@@ -469,6 +525,9 @@ tap_inject(vlib_main_t *m, unformat_input_t *input, vlib_cli_command_t *cmd)
 			}
 		}
 	}
+
+	if (protos & PROTO_BIT_IGMP4)
+		add_ip4_multicast_arc();
 
 	if (protos & PROTO_BIT_ARP)
 		ethernet_register_input_type(m, ETHERNET_TYPE_ARP,
