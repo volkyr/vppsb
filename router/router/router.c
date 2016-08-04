@@ -331,20 +331,55 @@ set_tap_hwaddr(vlib_main_t *m, char *name, u8 *hwaddr)
 	return rc;
 }
 
+static int
+set_tap_link_state(vlib_main_t *m, char *name, u16 flags)
+{
+	int fd, rc;
+	struct ifreq ifr;
+
+	fd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
+	if (fd < 0)
+		return -1;
+
+	memset(&ifr, 0, sizeof(ifr));
+	strncpy(ifr.ifr_name, (char *)name, sizeof(ifr.ifr_name) - 1);
+
+	rc = ioctl(fd, SIOCGIFFLAGS, &ifr);
+	if (rc < 0)
+		goto out;
+
+	if (flags & VNET_SW_INTERFACE_FLAG_ADMIN_UP)
+		ifr.ifr_flags |= (IFF_UP | IFF_RUNNING);
+	else
+		ifr.ifr_flags &= ~(IFF_UP | IFF_RUNNING);
+
+	rc = ioctl(fd, SIOCSIFFLAGS, &ifr) < 0 ? -1 : 0;
+out:
+	close(fd);
+	return rc;
+}
+
 static clib_error_t *
 do_tap_connect(vlib_main_t *m, char *name, u32 iface, u32 *tap)
 {
 	vnet_hw_interface_t *hw = vnet_get_hw_interface(rm.vnet_main, iface);
+	vnet_sw_interface_t *sw = vnet_get_sw_interface(rm.vnet_main, iface);
+	u64 hw_address = 0;
 
 	*tap = ~0;
 	if (!hw)
 		return clib_error_return(0, "invalid interface");
+	else if (hw->hw_address)
+		memcpy(&hw_address, hw->hw_address, 6);
 
-	if (vnet_tap_connect(m, (u8 *)name, hw->hw_address, tap))
+	if (vnet_tap_connect(m, (u8 *)name, (u8 *)&hw_address, tap))
 		return clib_error_return(0, "failed to connect tap");
 
-	if (set_tap_hwaddr(m, name, hw->hw_address))
+	if (set_tap_hwaddr(m, name, (u8 *)&hw_address))
 		return clib_error_return(0, "failed to set tap hw address");
+
+	if (set_tap_link_state(m, name, sw->flags))
+		return clib_error_return(0, "failed to set tap link state");
 
 	if (set_int_l2_mode(m, rm.vnet_main, MODE_L2_XC, *tap, 0, 0, 0, iface))
 		return clib_error_return(0, "failed to xconnect to interface");
