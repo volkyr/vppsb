@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+
+# Copyright (c) 2016 Cisco and/or its affiliates.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at:
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+C1_IP="172.16.1.2/24"
+C1_GW="172.16.1.1"
+C2_IP="172.16.2.2/24"
+C2_GW="172.16.2.1"
+
+INSTR=()
+CMD=()
+INSTR+=("Welcome to the routing demo. This will show you some simple commands to connect two
+linux netnamespaces to VPP and ping between them.")
+CMD+=("")
+
+INSTR+=("To show interfaces type:")
+CMD+=("sudo vppctl show inter")
+
+INSTR+=("Lets examine our workloads c1 and c2")
+CMD+=("sudo ip netns exec c1 ip -o a")
+
+INSTR+=("")
+CMD+=("sudo ip netns exec c2 ip -o a")
+
+INSTR+=("To add interfaces, we add the host-side of the veth link pair.")
+CMD+=("ip link")
+
+INSTR+=("The links we need to add are link1 and link2 so lets add them with")
+CMD+=("sudo vppctl create host-interface name link1; sudo vppctl create host-interface name link2; sudo vppctl show inter")
+
+INSTR+=("Change the links state to up")
+CMD+=("sudo vppctl set interface state host-link1 up; sudo vppctl set interface state host-link2 up; sudo vppctl show inter")
+
+INSTR+=("Add IP addresses for the other end of each veth link")
+CMD+=("sudo vppctl set interface ip address host-link1 172.16.1.1/24;  sudo vppctl set interface ip address host-link2 172.16.2.1/24;  sudo vppctl show interface address")
+
+INSTR+=("You can also see the L3 table, or FIB by doing")
+CMD+=("sudo vppctl show ip fib")
+
+INSTR+=("At long last you probably want to see some pings")
+CMD+=("sudo ip netns exec c1 ping -c3 172.16.2.2")
+
+INSTR+=("")
+CMD+=("sudo ip netns exec c2 ping -c3 172.16.1.2")
+
+INSTR+=("Thanks for doing the routing demo. To restart this demo and type these commands yourself \nvagrant ssh \nsudo /vagrant/netns.sh \ncat /vagrant/routing.cmd")
+CMD+=("")
