@@ -21,17 +21,17 @@ C2_GW="172.16.2.1"
 INSTR=()
 CMD=()
 INSTR+=("Welcome to the routing demo. This will show you some simple commands to connect two
-linux netnamespaces to VPP and ping between them.")
+linux containers to VPP and ping between them.")
 CMD+=("")
 
 INSTR+=("To show interfaces type:")
 CMD+=("sudo vppctl show inter")
 
-INSTR+=("Lets examine our workloads c1 and c2")
-CMD+=("sudo ip netns exec c1 ip -o a")
+INSTR+=("Lets examine our workloads cone and ctwo")
+CMD+=("sudo lxc-attach -n cone -- ip -o a")
 
 INSTR+=("")
-CMD+=("sudo ip netns exec c2 ip -o a")
+CMD+=("sudo lxc-attach -n ctwo -- ip -o a")
 
 INSTR+=("To add interfaces, we add the host-side of the veth link pair.")
 CMD+=("ip link")
@@ -49,10 +49,10 @@ INSTR+=("You can also see the L3 table, or FIB by doing")
 CMD+=("sudo vppctl show ip fib")
 
 INSTR+=("At long last you probably want to see some pings")
-CMD+=("sudo ip netns exec c1 ping -c3 172.16.2.2")
+CMD+=("sudo lxc-attach -n cone -- ping -c3 172.16.2.2")
 
 INSTR+=("")
-CMD+=("sudo ip netns exec c2 ping -c3 172.16.1.2")
+CMD+=("sudo lxc-attach -n ctwo -- ping -c3 172.16.1.2")
 
 INSTR+=("Thanks for doing the routing demo. To restart this demo and type these commands yourself \nvagrant ssh \nsudo /vagrant/netns.sh \ncat /vagrant/routing.cmd")
 CMD+=("")

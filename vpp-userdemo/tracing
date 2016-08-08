@@ -34,10 +34,10 @@ INSTR+=("Lets add the trace command for the graph-node our type of interface af-
 CMD+=("sudo vppctl trace add af-packet-input 50")
 
 INSTR+=("At long last you probably want to see some pings")
-CMD+=("sudo ip netns exec c1 ping -c3 172.16.2.2")
+CMD+=("sudo lxc-attach -n cone -- ping -c3 172.16.2.2")
 
 INSTR+=("")
-CMD+=("sudo ip netns exec c2 ping -c3 172.16.1.2")
+CMD+=("sudo lxc-attach -n ctwo -- ping -c3 172.16.1.2")
 
 INSTR+=("Viewing the trace:")
 CMD+=("sudo vppctl show trace")

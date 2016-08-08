@@ -19,44 +19,67 @@ if [ $USER != "root" ] ; then
     exit
 fi
 
-C1_IP=$1
-C1_GW=$2
-C2_IP=$3
-C2_GW=$4
+cone_IP=$1
+cone_GW=$2
+ctwo_IP=$3
+ctwo_GW=$4
+
+containers=( cone ctwo )
+idx=1
 
 # Restart VPP so there is no config
 service vpp restart
 
-# delete previous incarnations if they exist
-ip link del dev veth_link1 &>/dev/null
-ip link del dev veth_link2 &>/dev/null
-ip netns del c1 &>/dev/null
-ip netns del c2 &>/dev/null
+for cntr in "${containers[@]}"
+do
+    #stop the container
+    echo "stopping container $cntr"
+    sudo lxc-stop -n $cntr
+done
 
-#create namespaces
-ip netns add c1 &>/dev/null
-ip netns add c2 &>/dev/null
+# LXC gives backend interfaces horrible names, give them a better name.
+function rename_veth_interface() {
 
-# create and configure 1st veth pair
-ip link add name veth_link1 type veth peer name link1
-ip link set dev link1 up
-ip link set dev veth_link1 up netns c1
+    local cntr="$1"
+    local nifname="$2"
 
-ip netns exec c1 \
-     bash -c "
-    ip link set dev lo up
-    ip addr add ${C1_IP} dev veth_link1
-    ip route add default via ${C1_GW} dev veth_link1
-"
+    ifr_index=`sudo lxc-attach -n $cntr -- ip -o link | tail -n 1 | awk -F : '{print $1}'`
+    ifr_index=$((ifr_index+1))
 
-# create and configure 2nd veth pair
-ip link add name veth_link2 type veth peer name link2
-ip link set dev link2 up
-ip link set dev veth_link2 up netns c2
+    for dir in /sys/class/net/*/
+    do
+        ifindex=`cat $dir/ifindex`
+        if [ $ifindex == $ifr_index ]
+            then ifname=`basename $dir`
+        fi
+    done
 
-ip netns exec c2 \
-     bash -c "
-    ip link set dev lo up
-    ip addr add ${C2_IP} dev veth_link2
-    ip route add default via ${C2_GW} dev veth_link2
-"
+    sudo ip link set $ifname down
+    sudo ip link set $ifname name $nifname
+    sudo ip link set $nifname up
+}
+
+for cntr in "${containers[@]}"
+do
+    cip=$cntr\_IP
+    cgw=$cntr\_GW
+
+    #start the container
+    sudo lxc-start -n $cntr -d
+
+    #give the backend of our veth a sensible name.
+    rename_veth_interface $cntr "link"$idx
+
+    #start vpp in the container.
+    #sudo lxc-attach -n $cntr service vpp start
+
+    #setup the inteface in the container 
+    sudo lxc-attach -n $cntr -- \
+        bash -c "
+        ip link set dev lo up
+        ip addr add ${!cip} dev veth_link1
+        ip link set dev veth_link1 up
+        ip route add default via ${!cgw} dev veth_link1"
+
+    idx=$((idx+1))
+done

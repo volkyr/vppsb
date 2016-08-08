@@ -22,5 +22,51 @@ fi
 
 echo "deb https://nexus.fd.io/content/repositories/fd.io.master.ubuntu.trusty.main/ ./" | sudo tee -a /etc/apt/sources.list.d/99fd.io.list
 apt-get -qq update
-apt-get -qq install -y --force-yes vpp vpp-dpdk-dkms bridge-utils
+apt-get -qq install -y --force-yes vpp vpp-dpdk-dkms bridge-utils lxc
 service vpp start
+
+#Configure LXC network to create an inteface for Linux bridge and a unconsumed second inteface
+echo -e "lxc.network.name=veth0\nlxc.network.type = veth\nlxc.network.name = veth_link1"  | sudo tee -a /etc/lxc/default.conf
+
+lxc-checkconfig
+
+containers=( cone ctwo )
+
+for i in "${containers[@]}"
+do
+    sudo lxc-create -t download -n $i -- --dist ubuntu --release trusty --arch amd64
+done
+
+for i in "${containers[@]}"
+do
+    sudo lxc-start -n $i -d
+done
+
+function lxc_exec() {
+
+    cntr="$1"
+    rCMD="$2"
+
+    CMD="sudo lxc-attach -n $cntr  -- $rCMD"
+
+    echo "$CMD"
+    eval "${CMD}"
+}
+
+for i in "${containers[@]}"
+do
+    lxc_exec $i "resolvconf -d eth0"
+    lxc_exec $i "dhclient"
+
+    lxc_exec $i "sh -c 'echo \"deb https://nexus.fd.io/content/repositories/fd.io.master.ubuntu.trusty.main/ ./\" >> /etc/apt/sources.list.d/99fd.io.list'"
+    lxc_exec $i "apt-get -qq install -y wget"
+    lxc_exec $i "apt-get -qq update"
+    lxc_exec $i "apt-get -qq install -y --force-yes vpp"
+    lxc_exec $i "sh -c 'echo  \"\\ndpdk {\\n   no-pci\\n}\" >> /etc/vpp/startup.conf'"
+    lxc_exec $i "service vpp start"
+done
+
+for i in "${containers[@]}"
+do
+    sudo lxc-stop -n $i
+done
