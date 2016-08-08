@@ -24,6 +24,7 @@
 #include <vnet/unix/tuntap.h>
 #include <librtnl/mapper.h>
 #include <vnet/ethernet/arp_packet.h>
+#include <vlibmemory/api.h>
 
 enum {
 	NEXT_UNTAPPED = 0,
@@ -393,6 +394,50 @@ static void add_del_route(ns_route_t *r, int is_del)
 	                (ip4_address_t *)r->gateway, sw_if_index, 0, ~0, 0);
 }
 
+struct set_flags_args {
+	u32 sw_if_index;
+	u8 flags;
+};
+
+static void set_interface_flags_callback(struct set_flags_args *a)
+{
+	vnet_sw_interface_set_flags(rm.vnet_main, a->sw_if_index,
+						a->flags);
+}
+
+static void add_del_link(ns_link_t *l, int is_del)
+{
+	struct tap_to_iface *map = NULL;
+	u32 sw_if_index = ~0;
+	u8 flags = 0;
+	struct set_flags_args args;
+	vnet_sw_interface_t *sw = NULL;
+
+	vec_foreach(map, rm.tap_to_iface) {
+		if (l->ifi.ifi_index == map->tap) {
+			sw_if_index = map->iface;
+			break;
+		}
+	}
+
+	if (sw_if_index == ~0)
+		return;
+
+	sw = vnet_get_sw_interface(rm.vnet_main, sw_if_index);
+	flags = sw->flags;
+
+	if (l->ifi.ifi_flags & IFF_UP)
+		flags |= VNET_SW_INTERFACE_FLAG_ADMIN_UP;
+	else
+		flags &= ~VNET_SW_INTERFACE_FLAG_ADMIN_UP;
+
+	args.sw_if_index = sw_if_index;
+	args.flags = flags;
+
+	vl_api_rpc_call_main_thread(set_interface_flags_callback,
+					(u8 *) &args, sizeof(args));
+}
+
 static void
 netns_notify_cb(void *obj, netns_type_t type, u32 flags, uword opaque)
 {
@@ -400,6 +445,8 @@ netns_notify_cb(void *obj, netns_type_t type, u32 flags, uword opaque)
 		add_del_addr((ns_addr_t *)obj, flags & NETNS_F_DEL);
 	else if (type == NETNS_TYPE_ROUTE)
 		add_del_route((ns_route_t *)obj, flags & NETNS_F_DEL);
+	else if (type == NETNS_TYPE_LINK)
+		add_del_link((ns_link_t *)obj, flags & NETNS_F_DEL);
 }
 
 static void insert_tap_to_iface(u32 tap, u32 iface)
