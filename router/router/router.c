@@ -64,6 +64,7 @@ enum {
 	PROTO_IGMP4,
 	PROTO_OSPF2,
 	PROTO_TCP,
+	PROTO_UDP,
 	PROTO_N_TOTAL,
 };
 
@@ -73,6 +74,7 @@ enum {
 	PROTO_BIT_IGMP4 = 1 << PROTO_IGMP4,
 	PROTO_BIT_OSPF2 = 1 << PROTO_OSPF2,
 	PROTO_BIT_TCP = 1 << PROTO_TCP,
+	PROTO_BIT_UDP = 1 << PROTO_UDP,
 };
 
 static char *proto_strings[PROTO_N_TOTAL] = {
@@ -81,6 +83,7 @@ static char *proto_strings[PROTO_N_TOTAL] = {
 	[PROTO_IGMP4] = "igmp4",
 	[PROTO_OSPF2] = "ospf2",
 	[PROTO_TCP] = "tcp",
+	[PROTO_UDP] = "udp",
 };
 
 static inline u32 parse_protos(char *proto_string)
@@ -200,6 +203,8 @@ tap_inject_func(vlib_main_t *m, vlib_node_runtime_t *node, vlib_frame_t *f,
 			iphdr = vlib_buffer_get_current(b0);
 			if (iphdr->protocol == IP_PROTOCOL_TCP)
 				proto_bit = PROTO_BIT_TCP;
+			else if (iphdr->protocol == IP_PROTOCOL_UDP)
+				proto_bit = PROTO_BIT_UDP;
 			else if (iphdr->protocol == IP_PROTOCOL_OSPF)
 				proto_bit = PROTO_BIT_OSPF2;
 			else if (iphdr->protocol == IP_PROTOCOL_IGMP)
@@ -584,6 +589,15 @@ tap_inject(vlib_main_t *m, unformat_input_t *input, vlib_cli_command_t *cmd)
 			return clib_error_return(0,
 				"tcp requires arp and icmp4");
 
+	if (protos & PROTO_BIT_UDP) {
+		/* Require arp, icmp4, and igmp4 for udp. */
+		if (!(protos & PROTO_BIT_ARP) ||
+		    !(protos & PROTO_BIT_ICMP4) ||
+		    !(protos & PROTO_BIT_IGMP4))
+			return clib_error_return(0,
+				"udp requires arp, icmp4, and igmp4");
+	}
+
 	err = do_tap_connect(m, name, iface, &tap);
 	if (err) {
 		if (tap != ~0)
@@ -625,6 +639,10 @@ tap_inject(vlib_main_t *m, unformat_input_t *input, vlib_cli_command_t *cmd)
 
 	if (protos & PROTO_BIT_TCP)
 		ip4_register_protocol(IP_PROTOCOL_TCP,
+		                      tap_inject_classified_node.index);
+
+	if (protos & PROTO_BIT_UDP)
+		ip4_register_protocol(IP_PROTOCOL_UDP,
 		                      tap_inject_classified_node.index);
 
 	/* Find sw_if_index of tap associated with data plane interface. */
