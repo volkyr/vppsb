@@ -12,19 +12,39 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+OPTIND=1         # Reset in case getopts has been used previously in the shell.
+
+function show_help {
+    echo -e "$0:"
+    echo -e "\t-h displays this help message"
+    echo -e "\t-d logs output to a file $0-<pid>.log"
+}
+
 if [ $USER != "root" ] ; then
     #echo "Restarting script with sudo..."
     sudo $0 ${*}
     exit
 fi
 
-if [ -z "$1" ]; then
+while getopts "h?d" opt; do
+    case "$opt" in
+    h|\?)  show_help
+        exit 0
+        ;;
+    d)  exec &> >(tee -a "$0-$$.log")
+        ;;
+    esac
+done
+
+shift $((OPTIND-1))
+
+if [ -z "$@" ]; then
     echo "You must specify a demo name"
     exit 0;
 fi
 
-if [ -f "$1" ]; then
-    DEMO=$1
+if [ -f "$@" ]; then
+    DEMO=$@
 else
     echo "This is not a valid filename"
     exit 0;
@@ -63,7 +83,7 @@ if [ -e $DEMO.cmd ]; then
     rm $DEMO.cmd
 fi
 
-#Loop through instructions and commands from filename input as $1
+#Loop through instructions and commands from filename input as $@
 for ((i=0;i<${#INSTR[@]};++i)); do
     instruction "\${INSTR[i]}" "\${CMD[i]}"
     eval "${CMD[i]}"
