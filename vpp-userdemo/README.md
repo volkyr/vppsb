@@ -13,14 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-# INTRO:
+# INTRO
 
 This is a Vagrant based user demo environment for beginners with VPP
 
-It walks a user through
-- each of the commands,
-- the expected output,
-- gives a file of the commands used to try themselves
+to access the GUI for the demo, simply open up your favorite browser and point it at 
+` http://localhost:5000 `
+
+# RUNNING DEMOS VIA GUI
+
+- click on a tutorial from the list appearing on the side navigation bar. 
+- Once the selected tutorial is loaded, click the "NEXT" button, or hit the SPACE bar to go through the steps.
+- Each step is executing the shown command against the VM, showing the response on the console that appears at the bottom of the GUI.
+
 
 # REQUIREMENTS
 - vagrant (1.8)

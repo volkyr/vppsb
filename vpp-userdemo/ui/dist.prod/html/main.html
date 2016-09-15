@@ -1,0 +1,105 @@
+<header></header>
+<div layout>
+	<div flex-xl="15" flex="20" class="side-nav">
+		<div layout>
+			<div flex="100">
+				<h3 class="tutorials-title">Tutorials</h3>
+			</div>
+		</div>
+		<div layout layout-align="center" class="tutorials-row" ng-repeat="tutorial in tutorials" ng-click="selectTutorial(tutorial)" 
+		ng-class="{'tutorials-active': (tutorial == selectedTutorial)}">
+			<div flex="90">
+				<i class="material-icons tutorials-icon">insert_drive_file</i>
+				<h5 class="tutorials-text">{{tutorial}}</h5>
+				<i ng-if="selectedTutorial == tutorial" class="material-icons tutorial-playing-icon">playlist_play</i>
+			</div>
+		</div>
+	</div>
+	<div flex>
+		<ul class="progress-indicator">
+		  	<li ng-repeat="step in instructions track by $index" ng-class="{completed: ($index <= pointer)}"><span class="bubble"></span>Step {{$index+1}}</li>
+		</ul>
+		<div layout>
+			<div flex>
+				<md-card>
+					<md-card-header>
+					    <md-card-header-text>
+					    	<div layout>
+					    		<div flex>
+					    			<span class="md-title card-title">{{selectedTutorial}}</span>
+					    		</div>
+					    		<div flex>
+					    			<div class="clipboard-div" ng-if="selectedTutorial" ngclipboard data-clipboard-text="{{commands[pointer]}}">
+					    				<span class="clipboard-text">Copy to clipboard</span>
+					    				<i class="material-icons clipboard-icon">content_paste</i>
+					    			</div>
+					    		</div>
+					    	</div>
+					    </md-card-header-text>
+					</md-card-header>
+					<md-card-content class="instructions-content">
+						<div layout layout-align="center">
+							<div flex="80">
+								<center>
+									<h2 class="no-tutorial-text" ng-if="selectedTutorial == ''">Please select a tutorial from the list on the left</h2>
+									<h4 class="instruction-text">{{instructions[pointer]}}</h4>
+				   					<p class="command-text">{{commands[pointer]}}</p>
+				   				</center>
+							</div>
+						</div>
+				 	</md-card-content>
+				 	<md-card-footer ng-if="pointer != null" class="card-footer">
+				 		<md-progress-circular ng-if="!stepDone" class="card-loader" md-mode="indeterminate"></md-progress-circular>
+				 		<div ng-if="stepDone" class="card-button-group" ng-click="nextStep()">
+				 			<i class="material-icons card-button">navigate_next</i>
+				 			<span class="card-button-text">next</span>
+				 		</div>
+					</md-card-footer>
+				</md-card>
+			</div>
+		</div>
+		<div layout>
+			<div flex>
+				<div id="window">
+				 	<div id="toolbar">
+						<div class="top">
+							<div id="lights">
+								<div class="light red">
+									<div class="glyph">×</div>
+									<div class="shine"></div>
+									<div class="glow"></div>
+								</div>				
+								<div class="light yellow">
+									<div class="glyph">-</div>
+									<div class="shine"></div>
+									<div class="glow"></div>
+								</div>
+								<div class="light green">
+									<div class="glyph">+</div>
+									<div class="shine"></div>
+									<div class="glow"></div>
+								</div>
+							</div>
+							<div id="title">
+								<div class="folder">
+									<div class="tab"></div>
+									<div class="body"></div>
+								</div>
+								<span>vppsb - {{selectedTutorial}}</span>
+							</div>
+							<div id="bubble">
+								<div class="shine"></div>
+								<div class="glow"></div>
+							</div>
+						</div>
+					</div>
+					<div id="body">
+						<div class="code-block">
+							<h4 class="command-response">{{response}}</h4>
+						</div>
+					</div>	
+				</div>
+			</div>
+		</div>
+	</div>
+</div>

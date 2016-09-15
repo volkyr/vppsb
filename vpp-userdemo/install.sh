@@ -70,3 +70,11 @@ for i in "${containers[@]}"
 do
     sudo lxc-stop -n $i
 done
+
+#UI dependencies
+curl -sL https://deb.nodesource.com/setup_4.x | sudo -E bash -
+sudo apt-get install -y nodejs
+sudo npm install /vagrant/ui/backend/
+sudo mv node_modules/vppsb/node_modules/ /vagrant/ui/backend/
+sudo npm install -g forever
+sudo forever start /vagrant/ui/backend/server.js
