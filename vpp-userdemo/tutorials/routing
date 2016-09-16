@@ -53,5 +53,5 @@ CMD+=("sudo lxc-attach -n cone -- ping -c3 172.16.2.2")
 INSTR+=("")
 CMD+=("sudo lxc-attach -n ctwo -- ping -c3 172.16.1.2")
 
-INSTR+=("Thanks for doing the routing demo. To restart this demo and type these commands yourself \nvagrant ssh \nsudo /vagrant/netns.sh \ncat /vagrant/routing.cmd")
+INSTR+=("Thanks for doing the routing demo. To restart this demo and type these commands yourself. vagrant ssh sudo /vagrant/netns.sh; cat /vagrant/routing.cmd")
 CMD+=("")
