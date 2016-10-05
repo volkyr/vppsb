@@ -19,6 +19,13 @@
 #include <vnet/ip/ip.h>
 #include <vnet/ip/lookup.h>
 
+#ifdef ip6_add_del_route_next_hop
+#define FIB_VERSION 1
+#else
+#include <vnet/fib/fib.h>
+#define FIB_VERSION 2
+#endif
+
 typedef struct {
   int linux_ifindex;
   u32 sw_if_index;
@@ -63,6 +70,7 @@ int mapper_add_del_route(mapper_ns_t *ns, ns_route_t *route, int del)
     if (route->rtm.rtm_dst_len >= 8 && route->dst[0] == 0xff)
       return 0;
 
+#if FIB_VERSION == 1
     struct ip6_main_t *im = &ip6_main;
     ip6_add_del_route_next_hop(im, //ip6_main
                                del?IP6_ROUTE_FLAG_DEL:IP6_ROUTE_FLAG_ADD,  //flags (not del)
@@ -73,7 +81,26 @@ int mapper_add_del_route(mapper_ns_t *ns, ns_route_t *route, int del)
                                0, //weight
                                ~0, //adj_index
                                ns->v6fib_index);
+#else
+    fib_prefix_t prefix;
+    ip46_address_t nh;
+
+    memset (&prefix, 0, sizeof (prefix));
+    prefix.fp_len = route->rtm.rtm_dst_len;
+    prefix.fp_proto = FIB_PROTOCOL_IP6;
+    clib_memcpy (&prefix.fp_addr.ip6, route->dst, sizeof (prefix.fp_addr.ip6));
+
+    memset (&nh, 0, sizeof (nh));
+    clib_memcpy (&nh.ip6, route->gateway, sizeof (nh.ip6));
+
+    fib_table_entry_path_add (ns->v6fib_index, &prefix, FIB_SOURCE_API,
+                              FIB_ENTRY_FLAG_NONE, prefix.fp_proto,
+                              &nh, map->sw_if_index, ns->v6fib_index,
+                              0 /* weight */, MPLS_LABEL_INVALID,
+                              FIB_ROUTE_PATH_FLAG_NONE);
+#endif /* FIB_VERSION == 1 */
   } else {
+#if FIB_VERSION == 1
     struct ip4_main_t *im = &ip4_main;
     ip4_add_del_route_next_hop(im, //ip4_main
                                del?IP4_ROUTE_FLAG_DEL:IP4_ROUTE_FLAG_ADD,  //flags (not del)
@@ -84,6 +111,24 @@ int mapper_add_del_route(mapper_ns_t *ns, ns_route_t *route, int del)
                                0, //weight
                                ~0, //adj_index
                                ns->v4fib_index);
+#else
+    fib_prefix_t prefix;
+    ip46_address_t nh;
+
+    memset (&prefix, 0, sizeof (prefix));
+    prefix.fp_len = route->rtm.rtm_dst_len;
+    prefix.fp_proto = FIB_PROTOCOL_IP4;
+    clib_memcpy (&prefix.fp_addr.ip4, route->dst, sizeof (prefix.fp_addr.ip4));
+
+    memset (&nh, 0, sizeof (nh));
+    clib_memcpy (&nh.ip4, route->gateway, sizeof (nh.ip4));
+
+    fib_table_entry_path_add (ns->v4fib_index, &prefix, FIB_SOURCE_API,
+                              FIB_ENTRY_FLAG_NONE, prefix.fp_proto,
+                              &nh, map->sw_if_index, ns->v4fib_index,
+                              0 /* weight */, MPLS_LABEL_INVALID,
+                              FIB_ROUTE_PATH_FLAG_NONE);
+#endif /* FIB_VERSION == 1 */
   }
 
   return 0;
