@@ -1,0 +1,185 @@
+From 344cc48bef87c54a3d7d6c489b56fb1ac513897e Mon Sep 17 00:00:00 2001
+From: Gabriel Ganne <gabriel.ganne@qosmos.com>
+Date: Sat, 17 Sep 2016 10:16:19 +0200
+Subject: [PATCH 3/3] test scripts
+
+Adds small scripts to test both flowtable and portmirroring APIs
+
+Signed-off-by: Gabriel Ganne <gabriel.ganne@qosmos.com>
+Change-Id: I59c6c0860125f8d8f553312fe44a2ed42d0b3e7c
+---
+ ft-test/classifier-env-setup.sh | 24 +++++++++++++++++++++
+ ft-test/classifier-pm.py        | 46 +++++++++++++++++++++++++++++++++++++++++
+ ft-test/flowtable-env-setup.sh  | 27 ++++++++++++++++++++++++
+ ft-test/flowtable-pm.py         | 41 ++++++++++++++++++++++++++++++++++++
+ 4 files changed, 138 insertions(+)
+ create mode 100755 ft-test/classifier-env-setup.sh
+ create mode 100755 ft-test/classifier-pm.py
+ create mode 100755 ft-test/flowtable-env-setup.sh
+ create mode 100755 ft-test/flowtable-pm.py
+
+diff --git a/ft-test/classifier-env-setup.sh b/ft-test/classifier-env-setup.sh
+new file mode 100755
+index 0000000..c930ec5
+--- /dev/null
++++ b/ft-test/classifier-env-setup.sh
+@@ -0,0 +1,24 @@
++#!/bin/bash
++
++for i in `seq 1 3`
++do
++    ip netns delete vpp$i
++    ip netns add vpp$i
++    vppctl tap connect vpp$i
++    vppctl set interface state tap-$(($i - 1)) up
++    ip link set dev vpp$i netns vpp$i
++    ip netns exec vpp$i ip link set vpp$i up
++done
++
++vppctl set interface l2 bridge tap-0 23
++vppctl set interface l2 bridge tap-1 23
++
++ip netns exec vpp1 ip addr add 192.168.0.1/24 dev vpp1
++ip netns exec vpp2 ip addr add 192.168.0.2/24 dev vpp2
++
++vppctl set int l3 tap-2
++vppctl set int ip addr tap-2 192.168.1.1/24
++
++# test
++ip netns exec vpp1 ping -c1 192.168.0.2
++ip netns exec vpp2 ping -c1 192.168.0.1
+diff --git a/ft-test/classifier-pm.py b/ft-test/classifier-pm.py
+new file mode 100755
+index 0000000..4110e24
+--- /dev/null
++++ b/ft-test/classifier-pm.py
+@@ -0,0 +1,46 @@
++#!/bin/env python
++from __future__ import print_function
++
++import vpp_papi as vpp 
++
++from vpp_papi.portmirroring import *
++import vpp_papi.portmirroring as pm
++
++if_1_name = 'tap-0'
++if_2_name = 'tap-1'
++if_3_name = 'tap-2'
++
++r = vpp.connect('papi')
++
++if_1_sw_if_index = vpp.sw_interface_dump(1, if_1_name)[0].sw_if_index
++if_2_sw_if_index = vpp.sw_interface_dump(1, if_2_name)[0].sw_if_index
++if_3_sw_if_index = vpp.sw_interface_dump(1, if_3_name)[0].sw_if_index
++
++# add port-mirroring as available classifier next nodes
++r = vpp.add_node_next("l2-input-classify", "pm-in-hit")
++print(r)
++pm_in_hit_idx = r.node_index;
++
++r = vpp.add_node_next("l2-output-classify", "pm-out-hit")
++print(r)
++pm_out_hit_idx = r.node_index;
++
++# configure portmirroring
++# 0 -> classifier, 0 -> add
++r = pm.pm_conf(if_3_sw_if_index, 0, 0)
++print(r)
++
++# add, table_index, nbuckets, memory_size, skip_n_vectors, match_n_vectors, next_table_index, miss_next_index, mask
++cl0 = vpp.classify_add_del_table(1, 0xffffffff, 64, 1024*1024, 0, 1, 0xffffffff, pm_in_hit_idx, '')
++print(cl0)
++cl1 = vpp.classify_add_del_table(1, 0xffffffff, 64, 1024*1024, 0, 1, 0xffffffff, pm_out_hit_idx, '')
++print(cl1)
++
++# input -> 1, output -> 0
++r = vpp.classify_set_interface_l2_tables(if_1_sw_if_index, cl0.new_table_index, 0xffffffff, 0xffffffff, 1)
++print(r)
++r = vpp.classify_set_interface_l2_tables(if_1_sw_if_index, cl1.new_table_index, 0xffffffff, 0xffffffff, 0)
++print(r)
++
++r = vpp.disconnect()
++exit(r)
+diff --git a/ft-test/flowtable-env-setup.sh b/ft-test/flowtable-env-setup.sh
+new file mode 100755
+index 0000000..1584000
+--- /dev/null
++++ b/ft-test/flowtable-env-setup.sh
+@@ -0,0 +1,27 @@
++#!/bin/bash
++
++for i in `seq 1 3`
++do
++    ip netns delete vpp$i
++    ip netns add vpp$i
++    vppctl tap connect vpp$i
++    vppctl set interface state tap-$(($i - 1)) up
++    ip link set dev vpp$i netns vpp$i
++    ip netns exec vpp$i ip link set vpp$i up
++done
++
++vppctl set interface l2 bridge tap-0 23
++vppctl set interface l2 bridge tap-1 23
++
++ip netns exec vpp1 ip addr add 192.168.0.1/24 dev vpp1
++ip netns exec vpp2 ip addr add 192.168.0.2/24 dev vpp2
++ip netns exec vpp3 ip addr add 192.168.1.1/24 dev vpp3
++
++for if in `seq 1 3`
++do
++	ip netns exec vpp$i ifconfig vpp$i mtu 10000
++done
++
++# test
++ip netns exec vpp1 ping -c1 192.168.0.2
++ip netns exec vpp2 ping -c1 192.168.0.1
+diff --git a/ft-test/flowtable-pm.py b/ft-test/flowtable-pm.py
+new file mode 100755
+index 0000000..6907b8f
+--- /dev/null
++++ b/ft-test/flowtable-pm.py
+@@ -0,0 +1,41 @@
++#!/bin/env python
++from __future__ import print_function
++
++import sys
++import vpp_papi as vpp 
++
++from portmirroring import *
++portmirroring = sys.modules['portmirroring']
++
++
++from flowtable import *
++flowtable = sys.modules['flowtable']
++
++if_1_name = 'tap-0'
++if_2_name = 'tap-1'
++if_3_name = 'tap-2'
++
++r = vpp.connect('papi')
++
++if_1_sw_if_index = vpp.sw_interface_dump(1, if_1_name)[0].sw_if_index
++if_2_sw_if_index = vpp.sw_interface_dump(1, if_2_name)[0].sw_if_index
++if_3_sw_if_index = vpp.sw_interface_dump(1, if_3_name)[0].sw_if_index
++
++# add port-mirroring as available flowtable next node
++r = vpp.add_node_next("flowtable-process", "pm-in-hit")
++print(r)
++portmirroring_index = r.node_index;
++
++# configure portmirroring
++# 1 = flowtable, 0 = is_add
++r = portmirroring.pm_conf(if_3_sw_if_index, 1, 0)
++print(r)
++
++# hook flowtable from both intfs 1 & 2:
++r = flowtable.flowtable_conf(if_1_sw_if_index, portmirroring_index, 0)
++print(r)
++r = flowtable.flowtable_conf(if_2_sw_if_index, portmirroring_index, 0)
++print(r)
++
++r = vpp.disconnect()
++exit(r)
+-- 
+2.10.0.rc1.15.g5cb0d5a
+

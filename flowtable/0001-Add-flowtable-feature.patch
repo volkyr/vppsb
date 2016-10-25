@@ -1,0 +1,1544 @@
+From aad927d0274e060e8b3b95fcfd543bad61140987 Mon Sep 17 00:00:00 2001
+From: Gabriel Ganne <gabriel.ganne@qosmos.com>
+Date: Sat, 17 Sep 2016 10:05:42 +0200
+Subject: [PATCH 1/3] Add flowtable feature
+
+flowtable is under /plugins
+
+Default behavior is to connect transparently to given interface.
+Can reroute packets to given node
+Can receive additional informations, and, if set offload session
+
+cli :
+ *  flowable <intf-name> [next-node <name>] [disable]
+
+Add API :
+ * to configure flowtable
+ * to update flow information with any external data
+
+As advised in the thread below :
+https://lists.fd.io/pipermail/vpp-dev/2016-October/002787.html
+hashtable is configured to alloc (NUM_BUCKETS * CLIB_CACHE_LINE_BYTES) Bytes
+with (flow_count / (BIHASH_KVP_PER_PAGE / 2)) Buckets
+
+Default flow_count set to 1M
+
+Author: Christophe Fontaine <christophe.fontaine@qosmos.com>
+Author: Gabriel Ganne <gabriel.ganne@qosmos.com>
+
+Signed-off-by: Gabriel Ganne <gabriel.ganne@qosmos.com>
+Change-Id: Ibb04917fbfdff84bfc0ffd4b64434e574ef4ae3d
+---
+ plugins/Makefile.am                                |   4 +
+ plugins/configure.ac                               |   1 +
+ plugins/flowtable-plugin/LICENSE                   | 201 ++++++++
+ plugins/flowtable-plugin/Makefile.am               |  55 +++
+ plugins/flowtable-plugin/configure.ac              |   9 +
+ plugins/flowtable-plugin/flowtable/api.c           | 169 +++++++
+ plugins/flowtable-plugin/flowtable/flowdata.h      |  35 ++
+ plugins/flowtable-plugin/flowtable/flowtable.api   |  59 +++
+ plugins/flowtable-plugin/flowtable/flowtable.c     |  86 ++++
+ plugins/flowtable-plugin/flowtable/flowtable.h     | 173 +++++++
+ .../flowtable-plugin/flowtable/flowtable_node.c    | 535 +++++++++++++++++++++
+ .../flowtable/nodes_registration.c                 |  80 +++
+ 12 files changed, 1407 insertions(+)
+ create mode 100644 plugins/flowtable-plugin/LICENSE
+ create mode 100644 plugins/flowtable-plugin/Makefile.am
+ create mode 100644 plugins/flowtable-plugin/configure.ac
+ create mode 100644 plugins/flowtable-plugin/flowtable/api.c
+ create mode 100644 plugins/flowtable-plugin/flowtable/flowdata.h
+ create mode 100644 plugins/flowtable-plugin/flowtable/flowtable.api
+ create mode 100644 plugins/flowtable-plugin/flowtable/flowtable.c
+ create mode 100644 plugins/flowtable-plugin/flowtable/flowtable.h
+ create mode 100644 plugins/flowtable-plugin/flowtable/flowtable_node.c
+ create mode 100644 plugins/flowtable-plugin/flowtable/nodes_registration.c
+
+diff --git a/plugins/Makefile.am b/plugins/Makefile.am
+index 5293e6e..d0a2e3c 100644
+--- a/plugins/Makefile.am
++++ b/plugins/Makefile.am
+@@ -51,3 +51,7 @@ endif
+ if ENABLE_lb_PLUGIN
+ SUBDIRS += lb-plugin
+ endif
++
++if ENABLE_flowtable_PLUGIN
++SUBDIRS += flowtable-plugin
++endif
+diff --git a/plugins/configure.ac b/plugins/configure.ac
+index 6ee064e..cbb180f 100644
+--- a/plugins/configure.ac
++++ b/plugins/configure.ac
+@@ -58,6 +58,7 @@ PLUGIN_ENABLED(ioam)
+ PLUGIN_ENABLED(snat)
+ PLUGIN_ENABLED(ila)
+ PLUGIN_ENABLED(lb)
++PLUGIN_ENABLED(flowtable)
+ 
+ # Disabled plugins, require --enable-XXX-plugin
+ PLUGIN_DISABLED(vcgn)
+diff --git a/plugins/flowtable-plugin/LICENSE b/plugins/flowtable-plugin/LICENSE
+new file mode 100644
+index 0000000..8dada3e
+--- /dev/null
++++ b/plugins/flowtable-plugin/LICENSE
+@@ -0,0 +1,201 @@
++                                 Apache License
++                           Version 2.0, January 2004
++                        http://www.apache.org/licenses/
++
++   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
++
++   1. Definitions.
++
++      "License" shall mean the terms and conditions for use, reproduction,
++      and distribution as defined by Sections 1 through 9 of this document.
++
++      "Licensor" shall mean the copyright owner or entity authorized by
++      the copyright owner that is granting the License.
++
++      "Legal Entity" shall mean the union of the acting entity and all
++      other entities that control, are controlled by, or are under common
++      control with that entity. For the purposes of this definition,
++      "control" means (i) the power, direct or indirect, to cause the
++      direction or management of such entity, whether by contract or
++      otherwise, or (ii) ownership of fifty percent (50%) or more of the
++      outstanding shares, or (iii) beneficial ownership of such entity.
++
++      "You" (or "Your") shall mean an individual or Legal Entity
++      exercising permissions granted by this License.
++
++      "Source" form shall mean the preferred form for making modifications,
++      including but not limited to software source code, documentation
++      source, and configuration files.
++
++      "Object" form shall mean any form resulting from mechanical
++      transformation or translation of a Source form, including but
++      not limited to compiled object code, generated documentation,
++      and conversions to other media types.
++
++      "Work" shall mean the work of authorship, whether in Source or
++      Object form, made available under the License, as indicated by a
++      copyright notice that is included in or attached to the work
++      (an example is provided in the Appendix below).
++
++      "Derivative Works" shall mean any work, whether in Source or Object
++      form, that is based on (or derived from) the Work and for which the
++      editorial revisions, annotations, elaborations, or other modifications
++      represent, as a whole, an original work of authorship. For the purposes
++      of this License, Derivative Works shall not include works that remain
++      separable from, or merely link (or bind by name) to the interfaces of,
++      the Work and Derivative Works thereof.
++
++      "Contribution" shall mean any work of authorship, including
++      the original version of the Work and any modifications or additions
++      to that Work or Derivative Works thereof, that is intentionally
++      submitted to Licensor for inclusion in the Work by the copyright owner
++      or by an individual or Legal Entity authorized to submit on behalf of
++      the copyright owner. For the purposes of this definition, "submitted"
++      means any form of electronic, verbal, or written communication sent
++      to the Licensor or its representatives, including but not limited to
++      communication on electronic mailing lists, source code control systems,
++      and issue tracking systems that are managed by, or on behalf of, the
++      Licensor for the purpose of discussing and improving the Work, but
++      excluding communication that is conspicuously marked or otherwise
++      designated in writing by the copyright owner as "Not a Contribution."
++
++      "Contributor" shall mean Licensor and any individual or Legal Entity
++      on behalf of whom a Contribution has been received by Licensor and
++      subsequently incorporated within the Work.
++
++   2. Grant of Copyright License. Subject to the terms and conditions of
++      this License, each Contributor hereby grants to You a perpetual,
++      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
++      copyright license to reproduce, prepare Derivative Works of,
++      publicly display, publicly perform, sublicense, and distribute the
++      Work and such Derivative Works in Source or Object form.
++
++   3. Grant of Patent License. Subject to the terms and conditions of
++      this License, each Contributor hereby grants to You a perpetual,
++      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
++      (except as stated in this section) patent license to make, have made,
++      use, offer to sell, sell, import, and otherwise transfer the Work,
++      where such license applies only to those patent claims licensable
++      by such Contributor that are necessarily infringed by their
++      Contribution(s) alone or by combination of their Contribution(s)
++      with the Work to which such Contribution(s) was submitted. If You
++      institute patent litigation against any entity (including a
++      cross-claim or counterclaim in a lawsuit) alleging that the Work
++      or a Contribution incorporated within the Work constitutes direct
++      or contributory patent infringement, then any patent licenses
++      granted to You under this License for that Work shall terminate
++      as of the date such litigation is filed.
++
++   4. Redistribution. You may reproduce and distribute copies of the
++      Work or Derivative Works thereof in any medium, with or without
++      modifications, and in Source or Object form, provided that You
++      meet the following conditions:
++
++      (a) You must give any other recipients of the Work or
++          Derivative Works a copy of this License; and
++
++      (b) You must cause any modified files to carry prominent notices
++          stating that You changed the files; and
++
++      (c) You must retain, in the Source form of any Derivative Works
++          that You distribute, all copyright, patent, trademark, and
++          attribution notices from the Source form of the Work,
++          excluding those notices that do not pertain to any part of
++          the Derivative Works; and
++
++      (d) If the Work includes a "NOTICE" text file as part of its
++          distribution, then any Derivative Works that You distribute must
++          include a readable copy of the attribution notices contained
++          within such NOTICE file, excluding those notices that do not
++          pertain to any part of the Derivative Works, in at least one
++          of the following places: within a NOTICE text file distributed
++          as part of the Derivative Works; within the Source form or
++          documentation, if provided along with the Derivative Works; or,
++          within a display generated by the Derivative Works, if and
++          wherever such third-party notices normally appear. The contents
++          of the NOTICE file are for informational purposes only and
++          do not modify the License. You may add Your own attribution
++          notices within Derivative Works that You distribute, alongside
++          or as an addendum to the NOTICE text from the Work, provided
++          that such additional attribution notices cannot be construed
++          as modifying the License.
++
++      You may add Your own copyright statement to Your modifications and
++      may provide additional or different license terms and conditions
++      for use, reproduction, or distribution of Your modifications, or
++      for any such Derivative Works as a whole, provided Your use,
++      reproduction, and distribution of the Work otherwise complies with
++      the conditions stated in this License.
++
++   5. Submission of Contributions. Unless You explicitly state otherwise,
++      any Contribution intentionally submitted for inclusion in the Work
++      by You to the Licensor shall be under the terms and conditions of
++      this License, without any additional terms or conditions.
++      Notwithstanding the above, nothing herein shall supersede or modify
++      the terms of any separate license agreement you may have executed
++      with Licensor regarding such Contributions.
++
++   6. Trademarks. This License does not grant permission to use the trade
++      names, trademarks, service marks, or product names of the Licensor,
++      except as required for reasonable and customary use in describing the
++      origin of the Work and reproducing the content of the NOTICE file.
++
++   7. Disclaimer of Warranty. Unless required by applicable law or
++      agreed to in writing, Licensor provides the Work (and each
++      Contributor provides its Contributions) on an "AS IS" BASIS,
++      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
++      implied, including, without limitation, any warranties or conditions
++      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
++      PARTICULAR PURPOSE. You are solely responsible for determining the
++      appropriateness of using or redistributing the Work and assume any
++      risks associated with Your exercise of permissions under this License.
++
++   8. Limitation of Liability. In no event and under no legal theory,
++      whether in tort (including negligence), contract, or otherwise,
++      unless required by applicable law (such as deliberate and grossly
++      negligent acts) or agreed to in writing, shall any Contributor be
++      liable to You for damages, including any direct, indirect, special,
++      incidental, or consequential damages of any character arising as a
++      result of this License or out of the use or inability to use the
++      Work (including but not limited to damages for loss of goodwill,
++      work stoppage, computer failure or malfunction, or any and all
++      other commercial damages or losses), even if such Contributor
++      has been advised of the possibility of such damages.
++
++   9. Accepting Warranty or Additional Liability. While redistributing
++      the Work or Derivative Works thereof, You may choose to offer,
++      and charge a fee for, acceptance of support, warranty, indemnity,
++      or other liability obligations and/or rights consistent with this
++      License. However, in accepting such obligations, You may act only
++      on Your own behalf and on Your sole responsibility, not on behalf
++      of any other Contributor, and only if You agree to indemnify,
++      defend, and hold each Contributor harmless for any liability
++      incurred by, or claims asserted against, such Contributor by reason
++      of your accepting any such warranty or additional liability.
++
++   END OF TERMS AND CONDITIONS
++
++   APPENDIX: How to apply the Apache License to your work.
++
++      To apply the Apache License to your work, attach the following
++      boilerplate notice, with the fields enclosed by brackets "{}"
++      replaced with your own identifying information. (Don't include
++      the brackets!)  The text should be enclosed in the appropriate
++      comment syntax for the file format. We also recommend that a
++      file or class name and description of purpose be included on the
++      same "printed page" as the copyright notice for easier
++      identification within third-party archives.
++
++   Copyright {yyyy} {name of copyright owner}
++
++   Licensed under the Apache License, Version 2.0 (the "License");
++   you may not use this file except in compliance with the License.
++   You may obtain a copy of the License at
++
++       http://www.apache.org/licenses/LICENSE-2.0
++
++   Unless required by applicable law or agreed to in writing, software
++   distributed under the License is distributed on an "AS IS" BASIS,
++   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++   See the License for the specific language governing permissions and
++   limitations under the License.
+diff --git a/plugins/flowtable-plugin/Makefile.am b/plugins/flowtable-plugin/Makefile.am
+new file mode 100644
+index 0000000..fda9b81
+--- /dev/null
++++ b/plugins/flowtable-plugin/Makefile.am
+@@ -0,0 +1,55 @@
++# Copyright (c) 2015 Cisco and/or its affiliates.
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at:
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++AUTOMAKE_OPTIONS = foreign subdir-objects
++
++AM_CFLAGS = -Wall
++AM_LDFLAGS = -module -shared -avoid-version
++
++#vppapitestpluginsdir = ${libdir}/vpp_api_test_plugins
++vpppluginsdir = ${libdir}/vpp_plugins
++
++vppplugins_LTLIBRARIES = flowtable_plugin.la
++
++flowtable_plugin_la_SOURCES = \
++	flowtable/api.c \
++	flowtable/flowtable.c \
++	flowtable/flowtable_node.c \
++	flowtable/nodes_registration.c
++
++nobase_include_HEADERS = \
++	flowtable/flowtable.h \
++	flowtable/flowdata.h \
++	flowtable/flowtable.api.h 
++
++BUILT_SOURCES = flowtable/flowtable.api.h flowtable/flowtable.py
++
++SUFFIXES = .api.h .api
++
++%.api.h: %.api
++	mkdir -p `dirname $@` ; \
++	$(CC) $(CPPFLAGS) -E -P -C -x c $^ \
++	| vppapigen --input - --output $@ --show-name $@
++
++%.py: %.api
++	$(info Creating Python binding for $@)
++	$(CC) $(CPPFLAGS) -E -P -C -x c $<              \
++	| vppapigen --input - --python -                \
++	| pyvppapigen.py --input - > $@
++
++
++pyapidir = ${prefix}/vpp_papi_plugins
++pyapi_DATA = flowtable/flowtable.py
++
++install-data-hook:
++	@(cd $(vpppluginsdir) && $(RM) $(vppplugins_LTLIBRARIES))
+diff --git a/plugins/flowtable-plugin/configure.ac b/plugins/flowtable-plugin/configure.ac
+new file mode 100644
+index 0000000..684569c
+--- /dev/null
++++ b/plugins/flowtable-plugin/configure.ac
+@@ -0,0 +1,9 @@
++AC_INIT(flowtable_plugin, 1.0)
++LT_INIT
++AM_INIT_AUTOMAKE
++AM_SILENT_RULES([yes])
++AC_PREFIX_DEFAULT([/usr])
++
++AC_PROG_CC
++
++AC_OUTPUT([Makefile])
+diff --git a/plugins/flowtable-plugin/flowtable/api.c b/plugins/flowtable-plugin/flowtable/api.c
+new file mode 100644
+index 0000000..cad2a8b
+--- /dev/null
++++ b/plugins/flowtable-plugin/flowtable/api.c
+@@ -0,0 +1,169 @@
++/*
++ * Copyright (c) 2016 Cisco and/or its affiliates.
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at:
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++#include <flowtable/flowtable.h>
++
++#include <vppinfra/byte_order.h>
++#include <vlibapi/api.h>
++#include <vlibmemory/api.h>
++#include <vlibsocket/api.h>
++
++#define vl_msg_id(n,h) n,
++typedef enum {
++#include <flowtable/flowtable.api.h>
++    /* We'll want to know how many messages IDs we need... */
++    VL_MSG_FIRST_AVAILABLE,
++} vl_msg_id_t;
++#undef vl_msg_id
++
++
++/* define message structures */
++#define vl_typedefs
++#include <flowtable/flowtable.api.h>
++#undef vl_typedefs
++
++/* define generated endian-swappers */
++#define vl_endianfun
++#include <flowtable/flowtable.api.h>
++#undef vl_endianfun
++
++#define vl_print(handle, ...) vlib_cli_output (handle, __VA_ARGS__)
++
++/* Get the API version number */
++#define vl_api_version(n,v) static u32 api_version=(v);
++#include <flowtable/flowtable.api.h>
++#undef vl_api_version
++
++/* Macro to finish up custom dump fns */
++#define FINISH                                  \
++    vec_add1 (s, 0);                            \
++    vl_print (handle, (char *)s);               \
++    vec_free (s);                               \
++    return handle;
++
++/*
++ * A handy macro to set up a message reply.
++ * Assumes that the following variables are available:
++ * mp - pointer to request message
++ * rmp - pointer to reply message type
++ * rv - return value
++ */
++
++#define REPLY_MACRO(t)                                          \
++do {                                                            \
++    unix_shared_memory_queue_t * q =                            \
++    vl_api_client_index_to_input_queue (mp->client_index);      \
++    if (!q)                                                     \
++        return;                                                 \
++                                                                \
++    rmp = vl_msg_api_alloc (sizeof (*rmp));                     \
++    rmp->_vl_msg_id = ntohs((t)+ftm->msg_id_base);              \
++    rmp->context = mp->context;                                 \
++    rmp->retval = ntohl(rv);                                    \
++                                                                \
++    vl_msg_api_send_shmem (q, (u8 *)&rmp);                      \
++} while(0);
++
++static void
++vl_api_flowtable_conf_t_handler (vl_api_flowtable_conf_t * mp)
++{
++    flowtable_main_t *ftm = &flowtable_main;
++    vl_api_flowtable_conf_reply_t * rmp;
++    int rv;
++
++    if (mp->next_node_index == 0xff)
++        ftm->next_node_index = FT_NEXT_ETHERNET_INPUT;
++    else
++        ftm->next_node_index = mp->next_node_index;
++
++    rv = flowtable_enable_disable(ftm, mp->sw_if_index, ! mp->enable_disable);
++
++    REPLY_MACRO (VL_API_FLOWTABLE_CONF_REPLY);
++}
++
++static void *
++vl_api_flowtable_conf_t_print (vl_api_flowtable_conf_t *mp, void * handle)
++{
++    u8 * s;
++    s = format (0, "SCRIPT: flowtable_conf ");
++
++    s = format (s, "%u ", mp->sw_if_index);
++    s = format (s, "%u ", mp->enable_disable);
++
++    FINISH;
++}
++
++static void
++vl_api_flowtable_update_t_handler (vl_api_flowtable_update_t * mp)
++{
++    int rv;
++    flowtable_main_t *ftm = &flowtable_main;
++    vl_api_flowtable_update_reply_t * rmp;
++
++    rv = flowtable_update(mp->is_ip4, mp->ip_src, mp->ip_dst,
++            mp->ip_upper_proto, mp->port_src, mp->port_dst,
++            mp->lifetime, mp->offloaded, mp->infos);
++
++    REPLY_MACRO (VL_API_FLOWTABLE_UPDATE_REPLY);
++}
++
++static void *
++vl_api_flowtable_update_t_print (vl_api_flowtable_update_t *mp, void * handle)
++{
++    u8 * s;
++    s = format (0, "SCRIPT: flowtable_update ");
++
++    s = format (s, "%u ", mp->is_ip4);
++    s = format (s, "%s ", mp->ip_src);
++    s = format (s, "%s ", mp->ip_dst);
++    s = format (s, "%u ", mp->ip_upper_proto);
++    s = format (s, "%u ", mp->port_src);
++    s = format (s, "%u ", mp->port_dst);
++    s = format (s, "%u ", mp->lifetime);
++    s = format (s, "%u ", mp->offloaded);
++    s = format (s, "%s ", mp->infos);
++
++    FINISH;
++}
++
++/* List of message types that this plugin understands */
++#define foreach_flowtable_plugin_api_msg    \
++    _(FLOWTABLE_CONF, flowtable_conf)       \
++    _(FLOWTABLE_UPDATE, flowtable_update)   \
++
++
++static clib_error_t * flowtable_api_init (vlib_main_t * vm)
++{
++  flowtable_main_t *ftm = &flowtable_main;
++  u8 *name = format (0, "flowtable_%08x%c", api_version, 0);
++  ftm->msg_id_base = vl_msg_api_get_msg_ids
++      ((char *) name, VL_MSG_FIRST_AVAILABLE);
++
++#define _(N,n)                                                  \
++    vl_msg_api_set_handlers((VL_API_##N + ftm->msg_id_base),    \
++                           #n,                                  \
++                           vl_api_##n##_t_handler,              \
++                           vl_noop_handler,                     \
++                           vl_api_##n##_t_endian,               \
++                           vl_api_##n##_t_print,                \
++                           sizeof(vl_api_##n##_t), 1);
++  foreach_flowtable_plugin_api_msg;
++#undef _
++
++  return 0;
++}
++
++VLIB_INIT_FUNCTION (flowtable_api_init);
++
+diff --git a/plugins/flowtable-plugin/flowtable/flowdata.h b/plugins/flowtable-plugin/flowtable/flowdata.h
+new file mode 100644
+index 0000000..9624039
+--- /dev/null
++++ b/plugins/flowtable-plugin/flowtable/flowdata.h
+@@ -0,0 +1,35 @@
++/*---------------------------------------------------------------------------
++ * Copyright (c) 2016 Qosmos and/or its affiliates.
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at:
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *---------------------------------------------------------------------------
++ */
++
++#ifndef __flowdata_h__
++#define __flowdata_h__
++
++#include <vnet/vnet.h>
++
++/* the following union will be copied to vlib->opaque
++ * it MUST be less or equal CLIB_CACHE_LINE_BYTES */
++typedef union {
++    struct {
++        u32 sw_if_index_current;
++        u8 offloaded;
++
++        u8 opaque[27];
++    } data;
++
++    u32 flow_data[8]; /* 32 Bytes == sizeof vlib_buffer_t's opaque field */
++} flow_data_t;
++
++#endif /* __flowdata_h__ */
+diff --git a/plugins/flowtable-plugin/flowtable/flowtable.api b/plugins/flowtable-plugin/flowtable/flowtable.api
+new file mode 100644
+index 0000000..d0797de
+--- /dev/null
++++ b/plugins/flowtable-plugin/flowtable/flowtable.api
+@@ -0,0 +1,59 @@
++/** \brief hook flowtable configuration
++    @param client_index - opaque cookie to identify the sender
++    @param context - sender context, to match reply w/ request
++    @param sw_if_index - interface index
++    @param next_node_index - (optional) redirect packets to given node, or 0xff for default
++    @param enable_disable - 0/1 set to disable
++*/
++define flowtable_conf
++{
++    u32 client_index;
++    u32 context;
++    u8 sw_if_index;
++    u8 next_node_index;
++    u8 enable_disable;
++};
++
++define flowtable_conf_reply
++{
++    u32 context;
++    i32 retval;
++};
++
++/** \brief send additional informations to the flowtable
++    @param client_index - opaque cookie to identify the sender
++    @param context - sender context, to match reply w/ request
++    @param is_ip4 - 0/1 ip version
++    @param ip_src - source ip address
++    @param ip_dst - destination ip address
++    @param ip_upper_proto - tcp or udp
++    @param port_src - source port
++    @param port_dst - destination port
++    @param lifetime - time to live (~0 for left untouched)
++    @param offloaded - offloading status
++    @param infos - external infos (opaque field)
++*/
++define flowtable_update
++{
++    u32 client_index;
++    u32 context;
++
++    /* used to compute flow key */
++    u8 is_ip4;
++    u8 ip_src[16];
++    u8 ip_dst[16];
++    u8 ip_upper_proto;
++    u16 port_src;
++    u16 port_dst;
++
++    /* additional flow informations */
++    u16 lifetime;
++    u8 offloaded;
++    u8 infos[27];
++};
++
++define flowtable_update_reply
++{
++    u32 context;
++    i32 retval;
++};
+diff --git a/plugins/flowtable-plugin/flowtable/flowtable.c b/plugins/flowtable-plugin/flowtable/flowtable.c
+new file mode 100644
+index 0000000..ce769a3
+--- /dev/null
++++ b/plugins/flowtable-plugin/flowtable/flowtable.c
+@@ -0,0 +1,86 @@
++/*
++ * Copyright (c) 2016 Qosmos and/or its affiliates.
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at:
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++#include "flowtable.h"
++#include <vnet/plugin/plugin.h>
++
++flowtable_main_t flowtable_main;
++
++int
++flowtable_enable_disable(flowtable_main_t * fm,
++    u32 sw_if_index, int enable_disable)
++{
++    u32 node_index = enable_disable ? flowtable_node.index : ~0;
++
++    return vnet_hw_interface_rx_redirect_to_node(fm->vnet_main,
++            sw_if_index, node_index);
++}
++
++static clib_error_t *
++flowtable_enable_disable_command_fn(vlib_main_t * vm,
++    unformat_input_t * input, vlib_cli_command_t * cmd)
++{
++    flowtable_main_t * fm = &flowtable_main;
++    u32 sw_if_index = ~0;
++    int enable_disable = 1;
++    u32 next_node_index = ~0;
++
++    int rv;
++
++    while (unformat_check_input(input) != UNFORMAT_END_OF_INPUT)
++    {
++        if (unformat(input, "disable"))
++            enable_disable = 0;
++        else if (unformat(input, "next-node %U", unformat_vlib_node,
++                    fm->vnet_main, &next_node_index))
++            ;
++        else if (unformat(input, "%U", unformat_vnet_sw_interface,
++            fm->vnet_main, &sw_if_index))
++            ;
++        else
++            break;
++    }
++
++    if (sw_if_index == ~0)
++        return clib_error_return(0, "No Interface specified");
++
++    /* by default, leave the packet follow its course */
++    if (next_node_index != ~0)
++        fm->next_node_index = next_node_index;
++    else
++        fm->next_node_index = FT_NEXT_ETHERNET_INPUT;
++
++    rv = flowtable_enable_disable(fm, sw_if_index, enable_disable);
++    switch (rv) {
++      case 0:
++          break;
++      case VNET_API_ERROR_INVALID_SW_IF_INDEX:
++          return clib_error_return(0, "Invalid interface");
++      case VNET_API_ERROR_UNIMPLEMENTED:
++          return clib_error_return(0,
++                "Device driver doesn't support redirection");
++      default:
++          return clib_error_return(0, "flowtable_enable_disable returned %d",
++                rv);
++    }
++
++    return 0;
++}
++
++VLIB_CLI_COMMAND(flowtable_interface_enable_disable_command) = {
++    .path = "flowtable",
++    .short_help = "flowtable <interface> [next-node <name>] [disable]",
++    .function = flowtable_enable_disable_command_fn,
++};
+diff --git a/plugins/flowtable-plugin/flowtable/flowtable.h b/plugins/flowtable-plugin/flowtable/flowtable.h
+new file mode 100644
+index 0000000..faa7410
+--- /dev/null
++++ b/plugins/flowtable-plugin/flowtable/flowtable.h
+@@ -0,0 +1,173 @@
++/*---------------------------------------------------------------------------
++ * Copyright (c) 2016 Qosmos and/or its affiliates.
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at:
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *---------------------------------------------------------------------------
++ */
++
++#ifndef __flowtable_h__
++#define __flowtable_h__
++
++#include <stdbool.h>
++#include <vppinfra/error.h>
++#include <vnet/vnet.h>
++#include <vnet/ip/ip.h>
++#include <vppinfra/bihash_8_8.h>
++#include <vppinfra/dlist.h>
++#include <vppinfra/pool.h>
++#include <vppinfra/vec.h>
++
++#include "flowdata.h"
++
++#define foreach_flowtable_error                       \
++    _(HIT, "packets with an existing flow")           \
++    _(THRU, "packets gone through")                   \
++    _(CREATED, "packets which created a new flow")    \
++    _(OFFLOADED, "packets which have been offloaded") \
++    _(ALLOC_ERROR, "failed to allocate flow")         \
++    _(TIMER_EXPIRE, "flows that have expired")        \
++    _(COLLISION, "hashtable collisions")
++
++typedef enum {
++#define _(sym, str) FLOWTABLE_ERROR_##sym,
++    foreach_flowtable_error
++#undef _
++    FLOWTABLE_N_ERROR
++} flowtable_error_t;
++
++
++typedef enum {
++    FT_NEXT_DROP,
++    FT_NEXT_ETHERNET_INPUT,
++    FT_NEXT_N_NEXT
++} flowtable_next_t;
++
++/* signatures */
++struct ip6_sig {
++    ip6_address_t src, dst;
++    u8 proto;
++    u16 port_src, port_dst;
++} __attribute__ ((packed));
++struct ip4_sig {
++    ip4_address_t src, dst;
++    u8 proto;
++    u16 port_src, port_dst;
++} __attribute__ ((packed));
++
++typedef union {
++    struct ip6_sig ip6;
++    struct ip4_sig ip4;
++    u8 data[0]; /* gcc will take the max */
++} signature;
++
++/* dlist helpers */
++#define dlist_is_head(node) ((node)->value == (u32) ~0)
++#define dlist_is_empty(pool, head_index)                          \
++({                                                                \
++    dlist_elt_t *head = pool_elt_at_index ((pool), (head_index)); \
++    (head->next == (u32) ~0 || head->next == (head_index));       \
++})
++
++/* flow helpers */
++#define flow_is_offloaded(f) ((f)->infos.data.offloaded)
++
++typedef struct {
++    u32 straight;
++    u32 reverse;
++} flow_stats_t;
++
++typedef struct flow_entry
++{
++    /* flow signature */
++    u32 sig_len;
++    signature sig;
++    u64 sig_hash; /* used to delete hashtable entries */
++
++    /* hashtable */
++    u32 ht_line_index; /* index of the list head of the line in the hashtable */
++    u32 ht_index; /* index in the hashtable line pool */
++
++    /* stats */
++    flow_stats_t stats;
++
++    /* timers */
++    u32 expire; /* in seconds */
++    u32 lifetime; /* in seconds */
++    u32 timer_index; /* index in the timer pool */
++
++    /* the following union will be copied to vlib->opaque
++     * it MUST be less or equal CLIB_CACHE_LINE_BYTES */
++    flow_data_t infos;
++} flow_entry_t;
++
++/* TODO improve timer duration (tcp sm state) */
++
++/* Timers (in seconds) */
++#define TIMER_DEFAULT_LIFETIME (60)
++#define TIMER_MAX_LIFETIME (300)
++
++/* Default max number of flows to expire during one run.
++ * 256 is the max number of packets in a vector, so this is a minimum 
++ * if all packets create a flow. */
++#define TIMER_MAX_EXPIRE (256)
++
++typedef struct {
++    /* flow entry pool */
++    flow_entry_t * flows;
++
++    /* hashtable */
++    BVT(clib_bihash) flows_ht;
++    dlist_elt_t * ht_lines;
++    u64 flows_cpt;
++
++    /* flowtable node index */
++    u32 flowtable_index;
++
++    /* timers */
++    dlist_elt_t * timers;
++    u32 * timer_wheel;
++    u32 time_index;
++
++    /* convenience */
++    vlib_main_t * vlib_main;
++    vnet_main_t * vnet_main;
++
++    /* next-node of flowtable node, NOT pm node id */
++    u32 next_node_index;
++
++    /* API dynamically registered base ID. */
++    u16 msg_id_base;
++} flowtable_main_t;
++
++extern flowtable_main_t flowtable_main;
++
++/*
++ * As advised in the thread below :
++ * https://lists.fd.io/pipermail/vpp-dev/2016-October/002787.html
++ * hashtable is configured to alloc (NUM_BUCKETS * CLIB_CACHE_LINE_BYTES) Bytes
++ * with (flow_count / (BIHASH_KVP_PER_PAGE / 2)) Buckets
++ */
++#define FM_POOL_COUNT_LOG2 20
++#define FM_POOL_COUNT (1 << FM_POOL_COUNT_LOG2)
++#define FM_NUM_BUCKETS (1 << (FM_POOL_COUNT_LOG2 - (BIHASH_KVP_PER_PAGE / 2)))
++#define FM_MEMORY_SIZE (FM_NUM_BUCKETS * CLIB_CACHE_LINE_BYTES)
++
++
++extern vlib_node_registration_t flowtable_node;
++
++/* API functions */
++int flowtable_enable_disable(flowtable_main_t * fm, u32 sw_if_index, int enable_disable);
++
++int flowtable_update(u8 is_ip4, u8 ip_src[16], u8 ip_dst[16], u8 ip_upper_proto,
++        u16 port_src, u16 port_dst, u16 lifetime, u8 offloaded, u8 infos[27]);
++
++#endif  /* __flowtable_h__ */
+diff --git a/plugins/flowtable-plugin/flowtable/flowtable_node.c b/plugins/flowtable-plugin/flowtable/flowtable_node.c
+new file mode 100644
+index 0000000..3a652df
+--- /dev/null
++++ b/plugins/flowtable-plugin/flowtable/flowtable_node.c
+@@ -0,0 +1,535 @@
++#include <vppinfra/dlist.h>
++#include <vppinfra/types.h>
++#include <vppinfra/vec.h>
++#include <vnet/ip/ip4_packet.h>
++
++#include "flowtable.h"
++
++vlib_node_registration_t flowtable_node;
++
++
++typedef struct {
++    u32 sw_if_index;
++    u32 next_index;
++    u32 offloaded;
++} flow_trace_t;
++
++static u8 *
++format_get_flowinfo(u8 * s, va_list * args)
++{
++    CLIB_UNUSED(vlib_main_t * vm) = va_arg(*args, vlib_main_t *);
++    CLIB_UNUSED(vlib_node_t * node) = va_arg(*args, vlib_node_t *);
++    flow_trace_t * t = va_arg(*args, flow_trace_t *);
++
++    s = format(s, "FlowInfo - sw_if_index %d, next_index = %d, offload = %d",
++            t->sw_if_index, t->next_index, t->offloaded);
++    return s;
++}
++
++/* TODO find a better hash function */
++static inline u64
++hash_signature(u8 is_ip4, signature const * sig)
++{
++    if (is_ip4) {
++        return sig->ip4.src.as_u32 ^ sig->ip4.dst.as_u32 ^ sig->ip4.proto
++            ^ sig->ip4.port_src ^ sig->ip4.port_dst;
++    } else {
++        return sig->ip6.dst.as_u64[0] ^ sig->ip6.dst.as_u64[1]
++            ^ sig->ip6.src.as_u64[0] ^ sig->ip6.src.as_u64[1]
++            ^ sig->ip4.port_src ^ sig->ip4.port_dst;
++    }
++}
++
++static inline u64
++parse_ip4_packet(ip4_header_t * ip0, uword * is_reverse, struct ip4_sig *sig)
++{
++    sig->proto = ip0->protocol;
++
++    if (ip4_address_compare(&ip0->src_address, &ip0->dst_address) < 0) {
++        sig->src = ip0->src_address;
++        sig->dst = ip0->dst_address;
++        *is_reverse = 1;
++    } else {
++        sig->src = ip0->dst_address;
++        sig->dst = ip0->src_address;
++    }
++
++    if (sig->proto == IP_PROTOCOL_UDP || sig->proto == IP_PROTOCOL_TCP) {
++        /* tcp and udp ports have the same offset */
++        udp_header_t * udp0 = (udp_header_t *) ip4_next_header(ip0);
++        if (is_reverse == 0) {
++            sig->port_src = udp0->src_port;
++            sig->port_dst = udp0->dst_port;
++        } else {
++            sig->port_src = udp0->dst_port;
++            sig->port_dst = udp0->src_port;
++        }
++    } else {
++        sig->port_src = 0;
++        sig->port_dst = 0;
++    }
++
++    return hash_signature(1 /* is_ip4 */, (signature *) sig);
++}
++
++static inline u64
++parse_ip6_packet(ip6_header_t * ip60, uword * is_reverse, struct ip6_sig * sig)
++{
++    sig->proto = ip60->protocol;
++
++    if (ip6_address_compare(&ip60->src_address, &ip60->dst_address) < 0) {
++        sig->src = ip60->src_address;
++        sig->dst = ip60->dst_address;
++        *is_reverse = 1;
++    } else {
++        sig->src = ip60->dst_address;
++        sig->dst = ip60->src_address;
++    }
++
++    if (sig->proto == IP_PROTOCOL_UDP || sig->proto == IP_PROTOCOL_TCP) {
++        /* tcp and udp ports have the same offset */
++        udp_header_t *udp0 = (udp_header_t *) ip6_next_header(ip60);
++        if (is_reverse == 0) {
++            sig->port_src = udp0->src_port;
++            sig->port_dst = udp0->dst_port;
++        } else {
++            sig->port_src = udp0->dst_port;
++            sig->port_dst = udp0->src_port;
++        }
++    } else {
++        sig->port_src = 0;
++        sig->port_dst = 0;
++    }
++
++    return hash_signature(0 /* is_ip4 */, (signature *) sig);
++}
++
++int
++flowtable_update(u8 is_ip4, u8 ip_src[16], u8 ip_dst[16], u8 ip_upper_proto,
++        u16 port_src, u16 port_dst, u16 lifetime, u8 offloaded, u8 infos[27])
++{
++    flowtable_main_t * fm = &flowtable_main;
++    u32 sig_len;
++    signature sig;
++    flow_entry_t *flow;
++    BVT(clib_bihash_kv) kv;
++
++    if (is_ip4) {
++        sig_len = sizeof(sig.ip4);
++        clib_memcpy (&sig.ip4.src, ip_src, 4);
++        clib_memcpy (&sig.ip4.dst, ip_dst, 4);
++        sig.ip4.proto = ip_upper_proto;
++        sig.ip4.port_src = port_src;
++        sig.ip4.port_dst = port_dst;
++
++    } else {
++        sig_len = sizeof(sig.ip6);
++        clib_memcpy (&sig.ip6.src, ip_src, 16);
++        clib_memcpy (&sig.ip6.dst, ip_dst, 16);
++        sig.ip6.proto = ip_upper_proto;
++        sig.ip6.port_src = port_src;
++        sig.ip6.port_dst = port_dst;
++    }
++
++    flow = NULL;
++    kv.key = hash_signature(is_ip4, &sig);
++    if (PREDICT_FALSE(BV(clib_bihash_search) (&fm->flows_ht, &kv, &kv))) {
++        return -1; /* flow not found */
++    } else {
++        dlist_elt_t * ht_line;
++        dlist_elt_t * e;
++        u32 ht_line_head_index;
++
++        flow = NULL;
++        ht_line_head_index = (u32) kv.value;
++        if (dlist_is_empty(fm->ht_lines, ht_line_head_index))
++            return -1; /* flow not found */
++
++        ht_line = pool_elt_at_index(fm->ht_lines, ht_line_head_index);
++        e = pool_elt_at_index(fm->ht_lines, ht_line->next);
++        while (!dlist_is_head(e)) {
++            flow = pool_elt_at_index(fm->flows, e->value);
++            if (PREDICT_TRUE(memcmp(&flow->sig, &sig, sig_len) == 0)) {
++                break;
++            }
++            e = pool_elt_at_index(fm->ht_lines, e->next);
++        }
++    }
++
++    if (PREDICT_FALSE(flow == NULL))
++        return -1; /* flow not found */
++
++    if (lifetime != (u16) ~0) {
++        ASSERT(lifetime < TIMER_MAX_LIFETIME);
++        flow->lifetime = lifetime;
++    }
++    flow->infos.data.offloaded = offloaded;
++    clib_memcpy(flow->infos.data.opaque, infos, sizeof(flow->infos.data.opaque));
++
++    return 0;
++}
++
++static inline void
++flowtable_entry_remove(flowtable_main_t *fm, flow_entry_t * f)
++{
++    /* remove node from hashtable */
++    clib_dlist_remove(fm->ht_lines, f->ht_index);
++    pool_put_index(fm->ht_lines, f->ht_index);
++
++    /* if list is empty, free it and delete hashtable entry */
++    if (dlist_is_empty(fm->ht_lines, f->ht_line_index)) {
++        pool_put_index(fm->ht_lines, f->ht_line_index);
++
++        BVT(clib_bihash_kv) kv = {.key = f->sig_hash};
++        BV(clib_bihash_add_del) (&fm->flows_ht, &kv, 0 /* is_add */);
++    }
++
++    /* release flow to pool */
++    pool_put(fm->flows, f);
++    ASSERT(fm->flows_cpt > 1);
++    fm->flows_cpt--;
++}
++
++static u64
++flowtable_timer_expire(flowtable_main_t *fm, u32 now)
++{
++    u64 expire_cpt;
++    flow_entry_t * f;
++    u32 * time_slot_curr_index;
++    dlist_elt_t * time_slot_curr;
++    dlist_elt_t * e;
++
++    time_slot_curr_index = vec_elt_at_index(fm->timer_wheel, fm->time_index);
++
++    if (PREDICT_FALSE(dlist_is_empty(fm->timers, *time_slot_curr_index)))
++        return 0;
++
++    expire_cpt = 0;
++    time_slot_curr = pool_elt_at_index(fm->timers, *time_slot_curr_index);
++
++    e = pool_elt_at_index(fm->timers, time_slot_curr->next);
++    while (!dlist_is_head(e) && expire_cpt < TIMER_MAX_EXPIRE) {
++        u32 next_index;
++        f = pool_elt_at_index(fm->flows, e->value);
++
++        ASSERT(f->timer_index == (e - fm->timers));
++        ASSERT(f->expire >= now);
++        flowtable_entry_remove(fm, f);
++
++        next_index = e->next;
++        clib_dlist_remove(fm->timers, e - fm->timers);
++        pool_put(fm->timers, e);
++
++        expire_cpt++;
++        e = pool_elt_at_index(fm->timers, next_index);
++    }
++
++    return expire_cpt;
++}
++
++static inline void
++timer_wheel_insert_flow(flowtable_main_t *fm, flow_entry_t *f)
++{
++    u32 timer_slot_head_index;
++
++    timer_slot_head_index = (fm->time_index + f->lifetime) % TIMER_MAX_LIFETIME;
++    clib_dlist_addtail(fm->timers, timer_slot_head_index, f->timer_index);
++}
++
++static void
++timer_wheel_resched_flow(flowtable_main_t *fm, flow_entry_t *f, u64 now)
++{
++    clib_dlist_remove(fm->timers, f->timer_index);
++    f->expire = now + f->lifetime;
++    timer_wheel_insert_flow(fm, f);
++
++    return;
++}
++
++/* TODO: replace with a more appropriate hashtable */
++static inline flow_entry_t *
++flowtable_entry_lookup_create(flowtable_main_t *fm, BVT(clib_bihash_kv) *kv,
++        signature const *sig, u32 const sig_len, u32 const now, int *created)
++{
++    flow_entry_t * f;
++    dlist_elt_t * ht_line;
++    dlist_elt_t * timer_entry;
++    dlist_elt_t * flow_entry;
++    u32 ht_line_head_index;
++
++    ht_line = NULL;
++
++    /* get hashtable line */
++    if (PREDICT_TRUE(BV(clib_bihash_search) (&fm->flows_ht, kv, kv) == 0)) {
++        dlist_elt_t * e;
++        ht_line_head_index = (u32) kv->value;
++        ht_line = pool_elt_at_index(fm->ht_lines, ht_line_head_index);
++
++        /* The list CANNOT be a singleton */
++        e = pool_elt_at_index(fm->ht_lines, ht_line->next);
++        while (!dlist_is_head(e)) {
++            f = pool_elt_at_index(fm->flows, e->value);
++            if (PREDICT_TRUE(memcmp(&f->sig, &sig, sig_len) == 0)) {
++                return f;
++            }
++            e = pool_elt_at_index(fm->ht_lines, e->next);
++        }
++
++        vlib_node_increment_counter(fm->vlib_main, flowtable_node.index,
++                FLOWTABLE_ERROR_COLLISION , 1);
++    } else {
++        /* create a new line */
++        pool_get(fm->ht_lines, ht_line);
++
++        ht_line_head_index = ht_line - fm->ht_lines;
++        clib_dlist_init (fm->ht_lines, ht_line_head_index);
++        kv->value = ht_line_head_index;
++        BV(clib_bihash_add_del) (&fm->flows_ht, kv, 1 /* is_add */);
++    }
++
++    /* assume the flowtable has been configured correctly */
++    ASSERT(fm->flows_cpt <= FM_POOL_COUNT);
++    if (PREDICT_FALSE(fm->flows_cpt > FM_POOL_COUNT)) {
++        return NULL;
++    }
++
++    /* create new flow */
++    *created = 1;
++    pool_get_aligned(fm->flows, f, CLIB_CACHE_LINE_BYTES);
++    fm->flows_cpt++;
++
++    memset(f, 0, sizeof(*f));
++    f->sig_len = sig_len;
++    clib_memcpy(&f->sig, &sig, sig_len);
++     f->sig_hash = kv->key;
++    f->lifetime = TIMER_DEFAULT_LIFETIME;
++    f->expire = now + TIMER_DEFAULT_LIFETIME;
++
++    /* insert in timer list */
++    pool_get(fm->timers, timer_entry);
++    timer_entry->value = f - fm->flows; /* index within the flow pool */
++    f->timer_index = timer_entry - fm->timers; /* index within the timer pool */
++    timer_wheel_insert_flow(fm, f);
++
++    /* insert in ht line */
++    pool_get(fm->ht_lines, flow_entry);
++    f->ht_index = flow_entry - fm->ht_lines; /* index within the ht line pool */
++    flow_entry->value = f - fm->flows; /* index within the flow pool */
++    f->ht_line_index = ht_line_head_index;
++    clib_dlist_addhead(fm->ht_lines, ht_line_head_index, f->ht_index);
++
++    return f;
++}
++
++static inline void
++timer_wheel_index_update(flowtable_main_t * fm, u32 now)
++{
++    u32 new_index = now % TIMER_MAX_LIFETIME;
++
++    if (PREDICT_FALSE(fm->time_index == ~0)) {
++        fm->time_index = new_index;
++        return;
++    }
++
++    if (new_index != fm->time_index) {
++        /* reschedule all remaining flows on current time index
++         * at the begining of the next one */
++
++        u32 * curr_slot_index = vec_elt_at_index(fm->timer_wheel, fm->time_index);
++        dlist_elt_t * curr_head = pool_elt_at_index(fm->timers, *curr_slot_index);
++
++        u32 * next_slot_index = vec_elt_at_index(fm->timer_wheel, new_index);
++        dlist_elt_t * next_head = pool_elt_at_index(fm->timers, *next_slot_index);
++
++        if (PREDICT_FALSE(dlist_is_empty(fm->timers, *curr_slot_index))) {
++            fm->time_index = new_index;
++            return;
++        }
++
++        dlist_elt_t * curr_prev = pool_elt_at_index (fm->timers, curr_head->prev);
++        dlist_elt_t * curr_next = pool_elt_at_index (fm->timers, curr_head->next);
++
++        /* insert timer list of current time slot at the begining of the next slot */
++        if (PREDICT_FALSE(dlist_is_empty(fm->timers, *next_slot_index))) {
++            next_head->next = curr_head->next;
++            next_head->prev = curr_head->prev;
++            curr_prev->next = *next_slot_index;
++            curr_next->prev = *next_slot_index;
++        } else {
++            dlist_elt_t * next_next = pool_elt_at_index (fm->timers, next_head->next);
++            curr_prev->next = next_head->next;
++            next_head->next = curr_head->next;
++            next_next->prev = curr_head->prev;
++            curr_next->prev = *next_slot_index;
++        }
++
++        /* reset current time slot as an empty list */
++        memset (curr_head, 0xff, sizeof (*curr_head));
++
++        fm->time_index = new_index;
++    }
++}
++
++static uword
++flowtable_process(vlib_main_t * vm,
++    vlib_node_runtime_t * node, vlib_frame_t * frame)
++{
++    u32 n_left_from, * from, next_index, * to_next;
++    flowtable_main_t * fm = &flowtable_main;
++
++#define _(sym, str) u32 CPT_##sym = 0;
++    foreach_flowtable_error
++#undef _
++
++    from = vlib_frame_vector_args(frame);
++    n_left_from = frame->n_vectors;
++    next_index = node->cached_next_index;
++
++    u32 current_time = (u32) ((u64) fm->vlib_main->cpu_time_last_node_dispatch / fm->vlib_main->clib_time.clocks_per_second);
++    timer_wheel_index_update(fm, current_time);
++
++    while (n_left_from > 0)
++    {
++        u32 pi0;
++        u32 next0;
++        u32 n_left_to_next;
++
++        vlib_buffer_t * b0;
++        vlib_get_next_frame(vm, node, next_index, to_next, n_left_to_next);
++
++        /* Single loop */
++        while (n_left_from > 0 && n_left_to_next > 0)
++        {
++            int created = 0;
++            flow_entry_t * flow = NULL;
++            uword is_reverse = 0;
++            u64 sig_hash;
++            BVT(clib_bihash_kv) kv;
++
++            u16 type;
++            pi0 = to_next[0] = from[0];
++            b0 = vlib_get_buffer(vm, pi0);
++            u32 sw_if_index0 = vnet_buffer(b0)->sw_if_index[VLIB_RX];
++
++            /* Get Flow & copy metadatas into opaque1 or opaque2 */
++            ethernet_header_t * eth0 = (void *) (b0->data + b0->current_data);
++            type = clib_net_to_host_u16(eth0->type);
++            if (PREDICT_TRUE
++                    (type == ETHERNET_TYPE_IP6 || type == ETHERNET_TYPE_IP4))
++            {
++                u32 sig_len;
++                signature sig;
++                vlib_buffer_advance(b0, sizeof(ethernet_header_t));
++
++                /* compute 5 tuple key so that 2 half connections
++                 * get into the same flow */
++                if (type == ETHERNET_TYPE_IP4)
++                {
++                    sig_len = sizeof(struct ip4_sig);
++                    sig_hash = parse_ip4_packet(vlib_buffer_get_current(b0),
++                            &is_reverse, (struct ip4_sig *) &sig);
++                } else {
++                    sig_len = sizeof(struct ip6_sig);
++                    sig_hash = parse_ip6_packet(vlib_buffer_get_current(b0),
++                            &is_reverse, (struct ip6_sig *) &sig);
++                }
++
++                /* lookup flow */
++                kv.key = sig_hash;
++                flow = flowtable_entry_lookup_create(fm, &kv, &sig, sig_len,
++                        current_time, &created);
++
++                if (PREDICT_FALSE(flow == NULL)) {
++                    CPT_ALLOC_ERROR++;
++                    next0 = FT_NEXT_ETHERNET_INPUT;
++                    goto get_flowinfo_error;
++                }
++
++                if (created) {
++                    CPT_CREATED++;
++                } else {
++                    timer_wheel_resched_flow(fm, flow, current_time);
++                    CPT_HIT++;
++                }
++
++                if (is_reverse)
++                    flow->stats.reverse++;
++                else
++                    flow->stats.straight++;
++
++
++                if (flow_is_offloaded(flow)) {
++                    next0 = FT_NEXT_ETHERNET_INPUT;
++                    clib_memcpy(b0->opaque, &flow->infos, sizeof(flow->infos));
++                    vnet_buffer (b0)->sw_if_index[VLIB_RX] = flow->infos.data.sw_if_index_current;
++
++                    CPT_OFFLOADED++;
++                } else {
++                    flow->infos.data.sw_if_index_current = sw_if_index0;
++                    clib_memcpy(b0->opaque, &flow->infos, sizeof(flow->infos));
++                    next0 = fm->next_node_index;
++                }
++            } else {
++                next0 = FT_NEXT_ETHERNET_INPUT;
++            }
++            vlib_buffer_reset(b0);
++
++            /* stats */
++            CPT_THRU++;
++
++            /* frame mgmt */
++            from++;
++            to_next++;
++            n_left_from--;
++            n_left_to_next--;
++
++            if (b0->flags & VLIB_BUFFER_IS_TRACED)
++            {
++                flow_trace_t * t = vlib_add_trace(vm, node, b0, sizeof(*t));
++                t->sw_if_index = sw_if_index0;
++                t->next_index = next0;
++                if (flow)
++                    t->offloaded = flow->infos.data.offloaded;
++                else
++                    t->offloaded = 0;
++            }
++
++get_flowinfo_error:
++            vlib_validate_buffer_enqueue_x1(vm, node, next_index, to_next,
++                n_left_to_next, pi0, next0);
++        }
++        vlib_put_next_frame(vm, node, next_index, n_left_to_next);
++    }
++
++    /* handle expirations */
++    CPT_TIMER_EXPIRE += flowtable_timer_expire(fm, current_time);
++
++#define _(sym, str) \
++    vlib_node_increment_counter(vm, flowtable_node.index, \
++            FLOWTABLE_ERROR_##sym , CPT_##sym);
++    foreach_flowtable_error
++#undef _
++
++    return frame->n_vectors;
++}
++
++static char * flowtable_error_strings[] = {
++#define _(sym, string) string,
++    foreach_flowtable_error
++#undef _
++};
++
++VLIB_REGISTER_NODE(flowtable_node) = {
++    .function = flowtable_process,
++    .name = "flowtable-process",
++    .vector_size = sizeof(u32),
++    .format_trace = format_get_flowinfo,
++    .type = VLIB_NODE_TYPE_INTERNAL,
++    .n_errors = FLOWTABLE_N_ERROR,
++    .error_strings = flowtable_error_strings,
++    .n_next_nodes = FT_NEXT_N_NEXT,
++    .next_nodes = {
++        [FT_NEXT_DROP] = "error-drop",
++        [FT_NEXT_ETHERNET_INPUT] = "ethernet-input"
++    }
++};
+diff --git a/plugins/flowtable-plugin/flowtable/nodes_registration.c b/plugins/flowtable-plugin/flowtable/nodes_registration.c
+new file mode 100644
+index 0000000..ba36afb
+--- /dev/null
++++ b/plugins/flowtable-plugin/flowtable/nodes_registration.c
+@@ -0,0 +1,80 @@
++/*
++ * Copyright (c) 2016 Qosmos and/or its affiliates.
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at:
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++#include <vnet/plugin/plugin.h>
++#include <vppinfra/bihash_8_8.h>
++#include <vppinfra/dlist.h>
++#include <vppinfra/pool.h>
++#include <vppinfra/types.h>
++#include <vppinfra/vec.h>
++
++#include "flowtable.h"
++
++/*
++ * This routine exists to convince the vlib plugin framework that
++ * we haven't accidentally copied a random .dll into the plugin directory.
++ *
++ * Also collects global variable pointers passed from the vpp engine
++ */
++clib_error_t *
++vlib_plugin_register(vlib_main_t * vm, vnet_plugin_handoff_t * h,
++    int from_early_init)
++{
++    clib_error_t * error = 0;
++    flowtable_main_t * fm = &flowtable_main;
++
++    fm->vnet_main = vnet_get_main();
++    fm->vlib_main = vm;
++
++    return error;
++}
++
++static clib_error_t *
++flowtable_init(vlib_main_t * vm)
++{
++    int i;
++    clib_error_t * error = 0;
++    flowtable_main_t * fm = &flowtable_main;
++
++    fm->flowtable_index = flowtable_node.index;
++
++    /* ensures flow_info structure fits into vlib_buffer_t's opaque 1 field */
++    ASSERT(sizeof(flow_data_t) <= sizeof(u32) * 8);
++
++    /* init flow pool
++     * TODO get flow count from configuration */
++    pool_alloc_aligned(fm->flows, FM_POOL_COUNT, CLIB_CACHE_LINE_BYTES);
++
++    /* init hashtable */
++    fm->flows_cpt = 0;
++    pool_alloc(fm->ht_lines, 2 * FM_POOL_COUNT);
++    BV(clib_bihash_init) (&fm->flows_ht, "flow hash table",
++            FM_NUM_BUCKETS, FM_MEMORY_SIZE);
++
++    /* init timer wheel */
++    fm->time_index = ~0;
++    for (i = 0; i < TIMER_MAX_LIFETIME ; i++) {
++        dlist_elt_t * timer_slot;
++        pool_get(fm->timers, timer_slot);
++
++        u32 timer_slot_head_index = timer_slot - fm->timers;
++        clib_dlist_init (fm->timers, timer_slot_head_index);
++        vec_add1(fm->timer_wheel, timer_slot_head_index);
++    }
++
++    return error;
++}
++
++VLIB_INIT_FUNCTION(flowtable_init);
+-- 
+2.10.0.rc1.15.g5cb0d5a
+
