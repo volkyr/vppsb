@@ -1,0 +1,58 @@
+# This is the configuration file for vhost.sh script.
+# It is executed as bash script in order to load variables.
+# Which means that you can use syntaxes like $(uname -r) etc...
+# Normal utilization of this script shouldn't require you
+# to change anything outside of this file.
+#
+# Use ${CD} in order to get the path of the current directory
+#
+
+# Absolute path to a VPP git repository
+VPP_DIR=""
+
+# QEMU="qemu-system-x86_64" # The QEMU binary to use (can be a path to any binary)
+QEMU="qemu-system-x86_64"
+
+# Physical interface information for the test setup
+VPP_IF0_PCI="0000:0a:00.0"
+VPP_IF0_MAC="90:e2:ba:cb:f5:68"
+VPP_IF0_NAME="TenGigabitEtherneta/0/0"
+VPP_IF1_PCI="0000:0a:00.1"
+VPP_IF1_MAC="90:e2:ba:cb:f5:69"
+VPP_IF1_NAME="TenGigabitEtherneta/0/1"
+
+# VPP_BUILD="release" #Use release VPP build
+# VPP_BUILD="debug"   #Use debug VPP build
+VPP_BUILD="release"
+
+# VPP_GDB="1" # Enable gdb for VPP (other values disable it)
+VPP_GDB=""
+
+# Number of queues to be used for DPDK and VPP
+# Only 1 or 2 are supported
+QUEUES=1
+
+# Disables configured vhost thread placement
+# USE_DEFAULT_VHOST_PLACEMENT="1"
+USE_DEFAULT_VHOST_PLACEMENT=""
+
+# Cores do be used by the VM.
+# In order to work in 2-queues setup, 5 cores are required.
+CORES_VM="3,4,5,16,17"
+
+# Worker cores to be used by VPP.
+# For 2-queues setup, 4 cores should be provided.
+# For 1-queue setup, 2 cores should be provided.
+# CORES_VPP="1,2,13,14"
+CORES_VPP="2,14"
+
+# The created VM is roughly a clone of the running machine.
+# OverlayFS is used in order to isolate the VM, although
+# it uses the same root file system.
+VM_INITRD="/boot/initrd.img-$(uname -r)"
+VM_VMLINUZ="/boot/vmlinuz-$(uname -r)"
+
+# Used by 'ssh' command when opening an ssh session
+# to the running VM
+VM_USERNAME="$USER"
+
