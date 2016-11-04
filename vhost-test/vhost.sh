@@ -444,6 +444,8 @@ function start() {
 	
 	touch "$TMP_DIR/.started"
 	
+	echo "0" | sudo tee /proc/sys/kernel/watchdog_cpumask
+	
 	start_vpp
 	
 	vmdir_mount
@@ -466,6 +468,12 @@ function pin_vm() {
 }
 
 function pin_vpp() {
+	
+	for i in $(ls /proc/irq/ | grep [0-9]); do 
+		echo 1 | sudo tee /proc/irq/$i/smp_affinity > /dev/null || true ; 
+	done
+	
+	
 	PIDS=$(ps -eLf | grep  /bin/vpp | awk '$5 > 50 { print $4; }')
 	idx=0
 	for p in $PIDS; do
@@ -513,6 +521,24 @@ function cmd_start() {
 function cmd_pin() {
 	load_config
 	pin
+}
+
+function cmd_turbo_disable() {
+	load_config
+	sudo modprobe msr
+	echo "Disabling turboboost on CPUs $CORES_VPP_LIST $CORES_VM_LIST"
+	for cpu in $CORES_VPP_LIST $CORES_VM_LIST ; do
+		sudo wrmsr -p ${cpu} 0x1a0 0x4000850089
+	done
+}
+
+function cmd_turbo_enable() {
+	load_config
+	sudo modprobe msr
+	echo "Enabling turboboost on CPUs $CORES_VPP_LIST $CORES_VM_LIST"
+	for cpu in $CORES_VPP_LIST $CORES_VM_LIST ; do
+		sudo wrmsr -p ${cpu} 0x1a0 0x850089
+	done
 }
 
 function cmd_stop() {
