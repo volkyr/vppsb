@@ -1,0 +1,4 @@
+DESC: This is the vpp build/test container. 
+DIST: ubuntu
+VER: trusty
+PACKAGES: make gcc autotools-dev autoconf linux-headers-kernver

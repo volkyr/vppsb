@@ -1,0 +1,10 @@
+.vagrant/
+*~
+*#
+*.cmd
+
+node_modules/
+frontend/
+dist.dev/
+node-info.log
+node-error.log
