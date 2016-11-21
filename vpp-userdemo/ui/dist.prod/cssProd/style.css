@@ -23,7 +23,7 @@ html, body {
   color: white; }
 
 .nav {
-  background-color: #258dc4;
+  background-color: #ed1c24;
   position: relative;
   width: 100%;
   height: 50px; }
@@ -141,13 +141,13 @@ html, body {
     width: 50%;
     margin-right: 50%; }
   .progress-indicator > li.completed {
-    color: #258dc4; }
+    color: #ed1c24; }
     .progress-indicator > li.completed .bubble {
-      background-color: #258dc4;
-      color: #258dc4;
+      background-color: #ed1c24;
+      color: #ed1c24;
       border-color: #0d3043; }
       .progress-indicator > li.completed .bubble:before, .progress-indicator > li.completed .bubble:after {
-        background-color: #258dc4;
+        background-color: #ed1c24;
         border-color: #0d3043; }
   .progress-indicator > li.active {
     color: #337AB7; }
@@ -236,7 +236,7 @@ html, body {
   color: #a3a3a3;
   font-size: 15px;
   font-weight: bold;
-  font-family: "Roboto"; }
+  font-family: "Arial"; }
 
 .tutorials-icon {
   color: white;
@@ -265,10 +265,10 @@ html, body {
   outline: none; }
 
 .tutorials-row:hover {
-  background-color: #258dc4; }
+  background-color: #ed1c24; }
 
 .tutorials-active {
-  background-color: #258dc4; }
+  background-color: #ed1c24; }
 
 .card-footer {
   background-color: #fafafa;
@@ -314,7 +314,7 @@ html, body {
   position: relative;
   top: 18px;
   font-size: 18px;
-  font-family: "Roboto"; }
+  font-family: "Arial"; }
 
 .card-button:focus, .card-button-group:focus {
   outline: none; }
@@ -333,13 +333,13 @@ html, body {
   color: #434343;
   font-weight: 100;
   font-size: 18px;
-  font-family: "Roboto-Light";
+  font-family: "Arial";
   margin: 0; }
 
 .command-text {
   font-weight: bold;
   font-family: monospace;
-  color: #258dc4; }
+  color: #26cad3; }
 
 .command-response {
   display: block;
@@ -379,7 +379,7 @@ html, body {
   cursor: pointer; }
 
 .clipboard-div:hover > .clipboard-text, .clipboard-div:hover > .clipboard-icon {
-  color: #258dc4; }
+  color: #26cad3; }
 
 .code-block {
   display: inline-block;
@@ -957,13 +957,13 @@ html, body {
     width: 50%;
     margin-right: 50%; }
   .progress-indicator > li.completed {
-    color: #258dc4; }
+    color: #26cad3; }
     .progress-indicator > li.completed .bubble {
-      background-color: #258dc4;
-      color: #258dc4;
+      background-color: #1cede5;
+      color: #26cad3;
       border-color: #0d3043; }
       .progress-indicator > li.completed .bubble:before, .progress-indicator > li.completed .bubble:after {
-        background-color: #258dc4;
+        background-color: #1cede5;
         border-color: #0d3043; }
   .progress-indicator > li.active {
     color: #337AB7; }

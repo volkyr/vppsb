@@ -9,9 +9,9 @@
 		<div layout layout-align="center" class="tutorials-row" ng-repeat="tutorial in tutorials" ng-click="selectTutorial(tutorial)" 
 		ng-class="{'tutorials-active': (tutorial == selectedTutorial)}">
 			<div flex="90">
-				<i class="material-icons tutorials-icon">insert_drive_file</i>
+				<i class="material-icons tutorials-icon">label</i>
 				<h5 class="tutorials-text">{{tutorial}}</h5>
-				<i ng-if="selectedTutorial == tutorial" class="material-icons tutorial-playing-icon">playlist_play</i>
+				<i ng-if="selectedTutorial == tutorial" class="material-icons tutorial-playing-icon">playlist_add_check</i>
 			</div>
 		</div>
 	</div>
@@ -26,11 +26,11 @@
 					    <md-card-header-text>
 					    	<div layout>
 					    		<div flex>
-					    			<span class="md-title card-title">{{selectedTutorial}}</span>
+					    			<span style="font-family:arial;"class="md-title card-title">{{selectedTutorial}}</span>
 					    		</div>
 					    		<div flex>
 					    			<div class="clipboard-div" ng-if="selectedTutorial" ngclipboard data-clipboard-text="{{commands[pointer]}}">
-					    				<span class="clipboard-text">Copy to clipboard</span>
+					    				<span style="font-family:arial;"class="clipboard-text">Copy to Clipboard</span>
 					    				<i class="material-icons clipboard-icon">content_paste</i>
 					    			</div>
 					    		</div>
@@ -52,7 +52,7 @@
 				 		<md-progress-circular ng-if="!stepDone" class="card-loader" md-mode="indeterminate"></md-progress-circular>
 				 		<div ng-if="stepDone" class="card-button-group" ng-click="nextStep()">
 				 			<i class="material-icons card-button">navigate_next</i>
-				 			<span class="card-button-text">next</span>
+				 			<span class="card-button-text">Next</span>
 				 		</div>
 					</md-card-footer>
 				</md-card>

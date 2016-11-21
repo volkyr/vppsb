@@ -17,15 +17,7 @@
 
 This is a Vagrant based user demo environment for beginners with VPP
 
-to access the GUI for the demo, simply open up your favorite browser and point it at 
-` http://localhost:5000 `
-
-# RUNNING DEMOS VIA GUI
-
-- click on a tutorial from the list appearing on the side navigation bar. 
-- Once the selected tutorial is loaded, click the "NEXT" button, or hit the SPACE bar to go through the steps.
-- Each step is executing the shown command against the VM, showing the response on the console that appears at the bottom of the GUI.
-
+You can run the demo either through the GUI (recommended) or through the CLI
 
 # REQUIREMENTS
 - vagrant (1.8)
@@ -38,24 +30,29 @@ to access the GUI for the demo, simply open up your favorite browser and point i
 - ```vagrant up```
 - ... run the demo
 
-# RUNNING DEMOs
-- From the Host, where you ran ```vagrant up``` run ```./run <demoname>```
+# RUNNING DEMOS VIA THE GUI
 
-```./run <demoname>```
+- simply open up your favorite browser and point it at ` http://localhost:5000 `
+- click on a tutorial from the list appearing on the side navigation bar. 
+- Once the selected tutorial is loaded, click the "Next" button, or hit the SPACE bar to go through the steps.
+- Each step is executing the shown command against the VM, showing the response on the console that appears at the bottom of the GUI.
+
+# RUNNING DEMOs VIA THE CLI
+- From the Host, where you ran ```vagrant up``` run ```./run tutorials/<demoname>```
 
 # DEMOs
 
-## routing - directly connected routing
+## Routing - directly connected routing
 - Creates two network namespaces c1, c2
 - A gateway interface for each on VPP
 - Routes due to directly connected routes inserted into default FIB
 
-## bridging - directly connected interfaces into a bridge-domain
+## Bridging - directly connected interfaces into a bridge-domain
 - Creates two network namespaces c1, c2
 - Adds interfaces to VPP and add them to bridge-domain 1
 - MAC addresses are automatically learned
 
-## tracing - how to show a "day in the life of a packet" in VPP
+## Tracing - how to show a "day in the life of a packet" in VPP
 - Same environment as "routing" demo
 - How to add a trace
 - View a trace
