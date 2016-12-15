@@ -56,3 +56,7 @@ VM_VMLINUZ="/boot/vmlinuz-$(uname -r)"
 # to the running VM
 VM_USERNAME="$USER"
 
+# Set custom queue size (default is 256).
+# Setting a different value (512 or 1024) requires a patched qemu.
+VIRTIO_QSZ="256"
+

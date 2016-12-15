@@ -21,6 +21,7 @@ VPP_BUILD="xxx"
 VPP_INSTALL="xxx"
 VPP="xxx"
 DPDK_BIND="xxx"
+VPPCTL="xxx"
 
 CORES_VM_LIST="xxx"
 CORES_VM_N="xxx"
@@ -102,7 +103,7 @@ function load_config() {
 	
 	#Validate config
 	validate_parameter VPP_DIR VPP_IF0_PCI VPP_IF0_MAC VPP_IF1_PCI VPP_IF1_MAC VPP_IF0_NAME VPP_IF1_NAME \
-						QEMU VM_ROOT VM_INITRD VM_VMLINUZ VM_VNCPORT VM_USERNAME
+						QEMU VM_ROOT VM_INITRD VM_VMLINUZ VM_VNCPORT VM_USERNAME VPP_VHOST_MODE VIRTIO_QSZ
 	validate_directory VPP_DIR VM_ROOT
 	validate_file VM_INITRD VM_VMLINUZ
 	validate_exec QEMU
@@ -121,6 +122,10 @@ function load_config() {
 		echo "Invalid VPP_BUILD parameter '$VPP_BUILD'" && exit 1
 	fi
 	
+	if [ "$VPP_VHOST_MODE" != "client" -a "$VPP_VHOST_MODE" != "server" ]; then
+		echo "Invalid VPP_VHOST_MODE (must be client or server)" && exit 1
+	fi
+	
 	if [ "$QUEUES" != "1" -a "$QUEUES" != "2" ]; then
 		echo "QUEUES can only be 1 or 2"
 		exit 7
@@ -128,6 +133,7 @@ function load_config() {
 	
 	VPP="$VPP_INSTALL/vpp/bin/vpp"
 	DPDK_BIND="$(ls $VPP_BUILD/dpdk/dpdk-*/tools/dpdk-devbind.py | head -n 1)"
+	VPPCTL="sudo env PATH=$PATH:${VPP_INSTALL}/../install-vpp_debug-native/vpp-api-test/bin/ vppctl"
 	
 	validate_exec VPP DPDK_BIND
 
@@ -215,7 +221,7 @@ EOF
 	cat > "$VMDIR/etc/rc.local" << EOF
 #!/bin/sh
 mkdir -p /var/log/startup/
-for exe in \`ls /etc/startup.d\`; do
+for exe in \$(ls /etc/startup.d); do
   echo -n "Startup script \$exe    "
   ( (nohup /etc/startup.d/\$exe > /var/log/startup/\$exe 2>&1 &) && echo "[OK]") || echo "[Failed]"
 done
@@ -267,6 +273,16 @@ EOF
 	fi
 	LAST_VM_CPU="$(expr $CORES_VM_N - 1)"
 	
+	VM_VH_SERV_PARAM=""
+	if [ "$VPP_VHOST_MODE" = "client" ]; then
+		VM_VH_SERV_PARAM=",server"
+	fi
+	
+	QSZ=""
+	if [ "$VIRTIO_QSZ" != "256" ]; then
+		QSZ=",rx_virtqueue_sz=$VIRTIO_QSZ,tx_virtqueue_sz=$VIRTIO_QSZ"
+	fi
+	
 	cat << EOF >  "$TMP_DIR/vm.conf"
 -enable-kvm -machine pc -initrd $VM_INITRD -kernel $VM_VMLINUZ -vnc 127.0.0.1:1 -m 4G
 -append 'root=ro ro rootfstype=9p rootflags=trans=virtio nohz_full=1-$LAST_VM_CPU isolcpus=1-$LAST_VM_CPU rcu_nocbs=1-$LAST_VM_CPU selinux=0 audit=0 net.ifnames=0 biosdevname=0'
@@ -277,15 +293,135 @@ EOF
 -device virtio-9p-pci,id=dev_fs,fsdev=fsdev_id,mount_tag=ro
 -daemonize -pidfile $TMP_DIR/qemu.pid
 
--chardev socket,id=chr0,path=$TMP_DIR/sock0,server
+-chardev socket,id=chr0,path=$TMP_DIR/sock0${VM_VH_SERV_PARAM}
 -netdev type=vhost-user,id=thrnet0,chardev=chr0,queues=$QUEUES
--device virtio-net-pci,netdev=thrnet0,mac=de:ad:be:ef:01:00,bus=pci.0,addr=7.0${MQ}
+-device virtio-net-pci,netdev=thrnet0,mac=de:ad:be:ef:01:00,bus=pci.0,addr=7.0,mrg_rxbuf=on,indirect_desc=on${MQ}${QSZ}
 -object memory-backend-file,id=mem,size=4096M,mem-path=/mnt/huge,share=on
 -numa node,memdev=mem
--chardev socket,id=chr1,path=$TMP_DIR/sock1,server
+-chardev socket,id=chr1,path=$TMP_DIR/sock1${VM_VH_SERV_PARAM}
 -netdev type=vhost-user,id=thrnet1,chardev=chr1,queues=$QUEUES
--device virtio-net-pci,netdev=thrnet1,mac=de:ad:be:ef:01:01,bus=pci.0,addr=8.0${MQ}
+-device virtio-net-pci,netdev=thrnet1,mac=de:ad:be:ef:01:01,bus=pci.0,addr=8.0,mrg_rxbuf=on,indirect_desc=on${MQ}${QSZ}
 EOF
+}
+
+function get_vhost_thread_config() {
+	VH_IF0="$1"
+	VH_IF1="$2"
+	
+	if [ "$VH_IF0" = "" -o "$VH_IF1" = "" ]; then
+		echo "Missing get_vhost_thread_config interface argument"
+		exit 1
+	fi
+	
+	DEL=""
+	if [ "$3" = "del" ]; then
+		DEL="del"
+	elif [ "$3" != "" ]; then
+		echo "Invalid get_vhost_thread_config argument"
+		exit 1
+	fi
+	
+	#VHOST queue pining
+	if [ "$QUEUES" = "1" ]; then
+		if [ "$CORES_VPP_N" = "0" ]; then
+			echo -n ""
+		elif [ "$CORES_VPP_N" = "1" ]; then
+			echo "vhost thread $VH_IF1 1 ${DEL}"
+			echo "vhost thread $VH_IF0 1 ${DEL}"
+		elif [ "$CORES_VPP_N" -lt "4" ]; then
+			echo "vhost thread $VH_IF1 2 ${DEL}"
+			echo "vhost thread $VH_IF0 1 ${DEL}"
+		else
+			echo "vhost thread $VH_IF1 3 ${DEL}"
+			echo "vhost thread $VH_IF0 4 ${DEL}"
+		fi
+	elif [ "$QUEUES" = "2" ]; then
+		if [ "$CORES_VPP_N" = "0" ]; then
+			echo -n ""
+		elif [ "$CORES_VPP_N" = "1" ]; then
+			echo "vhost thread $VH_IF1 1 ${DEL}"
+			echo "vhost thread $VH_IF1 1 ${DEL}"
+			echo "vhost thread $VH_IF0 1 ${DEL}"
+			echo "vhost thread $VH_IF0 1 ${DEL}"
+		elif [ "$CORES_VPP_N" -lt "4" ]; then
+			echo "vhost thread $VH_IF1 2 ${DEL}"
+			echo "vhost thread $VH_IF1 2 ${DEL}"
+			echo "vhost thread $VH_IF0 1 ${DEL}"
+			echo "vhost thread $VH_IF0 1 ${DEL}"
+		else
+			echo "vhost thread $VH_IF1 3 ${DEL}"
+			echo "vhost thread $VH_IF1 4 ${DEL}"
+			echo "vhost thread $VH_IF0 1 ${DEL}"
+			echo "vhost thread $VH_IF0 2 ${DEL}"
+		fi
+	fi
+}
+
+function disconnect_vhost() {
+	VH_INST=$1
+	
+	if [ ! -f "$TMP_DIR/vpp-vhost-disconnect$VH_INST.conf" ]; then
+		echo "No configured vhost devices $VH_INST"
+		exit 1
+	fi
+	
+	echo "------- Disconnect vhost --------"
+	cat "$TMP_DIR/vpp-vhost-disconnect$VH_INST.conf"
+	echo "-------------------------------"
+	
+	$VPPCTL exec "$TMP_DIR/vpp-vhost-disconnect$VH_INST.conf"
+	rm "$TMP_DIR/vpp-vhost-disconnect$VH_INST.conf"
+}
+
+function connect_vhost() {
+	VH_INST=$1
+	
+	if [ -f "$TMP_DIR/vpp-vhost-disconnect$VH_INST.conf" ]; then
+		echo "Vhost devices $VH_INST already configured"
+		exit 1
+	fi
+	
+	VH_SERV_PARAM=""
+	if [ "$VPP_VHOST_MODE" = "server" ]; then
+		VH_SERV_PARAM="server"
+	fi
+    echo "create vhost-user socket $TMP_DIR/sock0$VH_INST $VH_SERV_PARAM hwaddr aa:aa:aa:aa:bb:b1"
+	VH_IF0=$($VPPCTL "create vhost-user socket $TMP_DIR/sock0$VH_INST $VH_SERV_PARAM hwaddr aa:aa:aa:aa:bb:b1")
+	VH_IF1=$($VPPCTL "create vhost-user socket $TMP_DIR/sock1$VH_INST $VH_SERV_PARAM hwaddr aa:aa:aa:aa:bb:b2")
+	
+	if [ "$VH_INST" = "" ]; then
+	cat << EOF >  "$TMP_DIR/vpp-vhost-connect$VH_INST.conf"
+set interface l2 xconnect $VH_IF0 $VPP_IF0_NAME
+set interface l2 xconnect $VH_IF1 $VPP_IF1_NAME
+set interface l2 xconnect $VPP_IF0_NAME $VH_IF0
+set interface l2 xconnect $VPP_IF1_NAME $VH_IF1
+set interface state $VH_IF0 up
+set interface state $VH_IF1 up
+EOF
+	else
+		cat << EOF >  "$TMP_DIR/vpp-vhost-connect$VH_INST.conf"
+set interface state $VH_IF0 up
+set interface state $VH_IF1 up
+EOF
+	fi
+
+	cat << EOF > "$TMP_DIR/vpp-vhost-disconnect$VH_INST.conf"
+delete vhost-user $VH_IF0
+delete vhost-user $VH_IF1
+EOF
+
+	if [ "$USE_DEFAULT_VHOST_PLACEMENT" != "1" ]; then
+		get_vhost_thread_config $VH_IF0 $VH_IF1 >> "$TMP_DIR/vpp-vhost-connect$VH_INST.conf"
+		#get_vhost_thread_config $VH_IF0 $VH_IF1 del >> "$TMP_DIR/vpp-vhost-disconnect$VH_INST.conf"
+	fi
+	
+	echo "------- Connect vhost --------"
+	echo "create vhost-user socket $TMP_DIR/sock0$VH_INST $VH_SERV_PARAM hwaddr aa:aa:aa:aa:bb:b1"
+	echo "create vhost-user socket $TMP_DIR/sock1$VH_INST $VH_SERV_PARAM hwaddr aa:aa:aa:aa:bb:b2"
+	cat "$TMP_DIR/vpp-vhost-connect$VH_INST.conf"
+	echo "-------------------------------"
+	
+	$VPPCTL exec "$TMP_DIR/vpp-vhost-connect$VH_INST.conf"
 }
 
 function prepare_vpp() {
@@ -320,65 +456,9 @@ dpdk { dev $VPP_IF0_PCI { $VPP_DEV0 } dev $VPP_IF1_PCI { $VPP_DEV1 } }
 EOF
 
 	cat << EOF >  "$TMP_DIR/vpp.conf"
-create vhost-user socket $TMP_DIR/sock0 hwaddr aa:aa:aa:aa:bb:b1
-create vhost-user socket $TMP_DIR/sock1 hwaddr aa:aa:aa:aa:bb:b2
-set interface l2 xconnect VirtualEthernet0/0/0 $VPP_IF0_NAME
-set interface l2 xconnect VirtualEthernet0/0/1 $VPP_IF1_NAME
-set interface l2 xconnect $VPP_IF0_NAME VirtualEthernet0/0/0
-set interface l2 xconnect $VPP_IF1_NAME VirtualEthernet0/0/1
-set interface state VirtualEthernet0/0/0 up
-set interface state VirtualEthernet0/0/1 up
 set interface state $VPP_IF1_NAME up
 set interface state $VPP_IF0_NAME up
 EOF
-
-	#VHOST queue pining
-	if [ "$QUEUES" = "1" -a "$USE_DEFAULT_VHOST_PLACEMENT" != "1" ]; then
-		if [ "$CORES_VPP_N" = "0" ]; then
-			echo -n ""
-		elif [ "$CORES_VPP_N" = "1" ]; then
-			cat << EOF >> "$TMP_DIR/vpp.conf"
-vhost thread VirtualEthernet0/0/1 1
-vhost thread VirtualEthernet0/0/0 1
-EOF
-		elif [ "$CORES_VPP_N" -lt "4" ]; then
-			cat << EOF >> "$TMP_DIR/vpp.conf"
-vhost thread VirtualEthernet0/0/1 2
-vhost thread VirtualEthernet0/0/0 1
-EOF
-		else
-			cat << EOF >> "$TMP_DIR/vpp.conf"
-vhost thread VirtualEthernet0/0/1 3
-vhost thread VirtualEthernet0/0/0 4
-EOF
-		fi
-	elif [ "$QUEUES" = "2" -a "$USE_DEFAULT_VHOST_PLACEMENT" != "1" ]; then
-		if [ "$CORES_VPP_N" = "0" ]; then
-			echo -n ""
-		elif [ "$CORES_VPP_N" = "1" ]; then
-			cat << EOF >> "$TMP_DIR/vpp.conf"
-vhost thread VirtualEthernet0/0/1 1
-vhost thread VirtualEthernet0/0/1 1
-vhost thread VirtualEthernet0/0/0 1
-vhost thread VirtualEthernet0/0/0 1
-EOF
-		elif [ "$CORES_VPP_N" -lt "4" ]; then
-			cat << EOF >> "$TMP_DIR/vpp.conf"
-vhost thread VirtualEthernet0/0/1 2
-vhost thread VirtualEthernet0/0/1 2
-vhost thread VirtualEthernet0/0/0 1
-vhost thread VirtualEthernet0/0/0 1
-EOF
-		else
-			cat << EOF >> "$TMP_DIR/vpp.conf"
-vhost thread VirtualEthernet0/0/1 3
-vhost thread VirtualEthernet0/0/1 4
-vhost thread VirtualEthernet0/0/0 1
-vhost thread VirtualEthernet0/0/0 2
-EOF
-		fi
-	fi
-
 }
 
 function prepare() {
@@ -389,6 +469,11 @@ function prepare() {
 }
 
 function start_vpp() {
+	if [ -f "$TMP_DIR/vpp-running" ]; then
+		echo "VPP is already running"
+		return 1
+	fi
+	
 	GDB=""
 	if [ "$VPP_GDB" = "1" ]; then
 		[ -e "$TMP_DIR/vpp.sh.gdbinit" ] && sudo rm "$TMP_DIR/vpp.sh.gdbinit"
@@ -400,7 +485,7 @@ run
 EOF
 		GDB="gdb -x $TMP_DIR/vpp.sh.gdbinit --args "
 	fi
-	
+
 	echo "------- Starting VPP --------"
 	echo "   Screen $VPPSCREEN (sudo screen -r $VPPSCREEN)"
 	echo "   Command-line Conf:"
@@ -408,15 +493,29 @@ EOF
 	echo "   CLI Conf:"
 	cat $TMP_DIR/vpp.conf
 	echo "-----------------------------"
-	
+
 	sudo screen -d -m -S "$VPPSCREEN" $GDB $VPP_DIR/build-root/install-vpp-native/vpp/bin/vpp -c $TMP_DIR/vpp.cmdline
+	touch "$TMP_DIR/vpp-running"
+}
+
+function stop_vpp() {
+	set +e
+	sudo screen -S "$VPPSCREEN" -X quit && echo "Stopping VPP"
+	[ -f "$TMP_DIR/vpp-running" ] && rm "$TMP_DIR/vpp-running"
 }
 
 function start_vm() {
+	if [ -f "$TMP_DIR/qemu.pid" ]; then
+		echo "VM already running"
+		return 1
+	fi
+	
 	echo "------- Starting VM --------"
 	echo "   VM conf:"
 	cat $TMP_DIR/vm.conf
 	echo "----------------------------"
+	
+	vmdir_mount
 	
 	#Eval is used so that ' characters are not ignored
 	eval sudo chrt -rr 1 taskset -c $CORES_VM $QEMU $(cat $TMP_DIR/vm.conf)
@@ -430,6 +529,17 @@ function start_vm() {
 	sudo ip link set $VMTAP up
 }
 
+function stop_vm() {
+	set +e
+	
+	[ -f "$TMP_DIR/qemu.pid" ] && echo "Stopping VM ($(sudo cat $TMP_DIR/qemu.pid))" && sudo kill "$(sudo cat $TMP_DIR/qemu.pid)" && sudo rm $TMP_DIR/qemu.pid
+	
+	sudo ip link set $BRNAME down
+	sudo brctl delbr $BRNAME
+	
+	vmdir_umount
+}
+
 function start() {
 	if [ -f "$TMP_DIR/.started" ]; then
 		echo "$TMP_DIR/.started exists"
@@ -439,17 +549,14 @@ function start() {
 	fi
 	
 	banner
-	
 	prepare
 	
 	touch "$TMP_DIR/.started"
-	
 	echo "0" | sudo tee /proc/sys/kernel/watchdog_cpumask
 	
 	start_vpp
-	
-	vmdir_mount
-	
+	sleep 10
+	connect_vhost
 	start_vm
 }
 
@@ -465,25 +572,40 @@ function pin_vm() {
 		sudo taskset -pc ${CORES_VM_ARRAY[$idx]} $p && sudo chrt -r -p 1 $p
 		idx=$(expr $idx + 1)
 	done
+	
+	#pin non-running processes to other cores
+	if [ "${CORES_VM_ARRAY[$idx]}" != "" ]; then
+		PIDS=$(ps -eLf | grep  qemu-system-x86_64 | awk '$5 < 20 { print $4; }')
+		for p in $PIDS; do
+			echo "VM lazy process $p on core ${CORES_VM_ARRAY[$idx]}"
+			sudo taskset -pc ${CORES_VM_ARRAY[$idx]} $p || echo err
+		done
+	fi
 }
 
 function pin_vpp() {
-	
+
 	for i in $(ls /proc/irq/ | grep [0-9]); do 
 		echo 1 | sudo tee /proc/irq/$i/smp_affinity > /dev/null || true ; 
 	done
 	
 	
 	PIDS=$(ps -eLf | grep  /bin/vpp | awk '$5 > 50 { print $4; }')
+	skip_first=1
 	idx=0
 	for p in $PIDS; do
 		if [ "${CORES_VPP_ARRAY[$idx]}" = "" ]; then
 			echo "Too many working threads in VPP"
 			return 1
 		fi
-		echo "VPP PID $p on core ${CORES_VPP_ARRAY[$idx]}"
-		sudo taskset -pc ${CORES_VPP_ARRAY[$idx]} $p && sudo chrt -r -p 1 $p
-		idx=$(expr $idx + 1)
+		if [ "$skip_first" = "1" ]; then
+			echo "Skipping $p"
+			skip_first=0
+		else
+			echo "VPP PID $p on core ${CORES_VPP_ARRAY[$idx]}"
+			sudo taskset -pc ${CORES_VPP_ARRAY[$idx]} $p && sudo chrt -r -p 1 $p
+			idx=$(expr $idx + 1)
+		fi
 	done
 }
 
@@ -494,17 +616,19 @@ function pin() {
 
 function stop() {
 	set +e
-	
-	[ -f "$TMP_DIR/qemu.pid" ] && echo "Stopping VM ($(sudo cat $TMP_DIR/qemu.pid))" && sudo kill "$(sudo cat $TMP_DIR/qemu.pid)" && sudo rm $TMP_DIR/qemu.pid
-	
-	vmdir_umount
-	
-	sudo ip link set $BRNAME down
-	sudo brctl delbr $BRNAME
-	
-	sudo screen -S "$VPPSCREEN" -X quit && echo "Stopping VPP"
-	
+	stop_vm
+	stop_vpp
 	[ -f "$TMP_DIR/.started" ] && rm "$TMP_DIR/.started"
+}
+
+function cmd_stop_vm() {
+	load_config
+	stop_vm
+}
+
+function cmd_start_vm() {
+	load_config
+	start_vm
 }
 
 function cmd_openvnc() {
@@ -558,6 +682,16 @@ function cmd_ssh() {
 
 function cmd_config() {
 	load_config
+}
+
+function cmd_disconnect() {
+	load_config
+	disconnect_vhost $@
+}
+
+function cmd_connect() {
+	load_config
+	connect_vhost $@
 }
 
 [ "$1" = "" ] && echo "Missing arguments" && usage && exit 1
