@@ -52,11 +52,30 @@ Finally, when you are done, you can stop the VMs.
 
 $ ./vhost.sh stop
 
-## Traffic Generation
+## Traffic Generation with MoonGen
 
-Traffic generation is, for now, out of the scope of this script.
-You are supposed to update ./conf.sh by setting up the right parameters.
-Use the traffic generator you like to test the perfs.
+mg.lua is intended to be used with the MoonGen packet generator.
+This script measures packet loss and forwarding with a user-defined
+granularity. The script keeps running while consecutive measures are
+too far on both Tx axis (--maxRateInterval option) or on the drop rate
+axis (--targetDropRateRatio). The latter is a ratio instead of an interval,
+as the packet drop is mostly a logarithmic value.
+
+The script is used as follows:
+sudo /path/to/MoonGen ./mg.lua <options>
+
+Mandatory options are:
+--rxport <id> MoonGen's rx port index
+--txport <id> MoonGen's tx port index
+--dst <hwaddr> Frame's destination L2 address
+
+Other options are:
+--duration <seconds> Each measurement duration
+--frameSize <bytes> Each frame size
+--maxRateInterval <%> Max Tx interval between measure
+--targetDropRateRatio <ratio> Max ratio between two drop rate measures
+--minRateInterval <%> Min Tx interval (Will override drop ratio in case of non-continuous)
+--out <file> Output file
 
 ## Administrativa
 
