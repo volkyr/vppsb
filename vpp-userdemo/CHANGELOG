@@ -1,0 +1,6 @@
+2017-03-28  Ray Kinsella  <ray.kinsella@intel.com>
+
+	* Updated Userdemo to support VPP 17.01
+	* Bug fixes:
+		* npm: setting npm proxy correctly
+		* run: setting directories correctly
