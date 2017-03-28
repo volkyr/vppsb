@@ -19,7 +19,16 @@
 #include <librtnl/netns.h>
 #include <vlibmemory/api.h>
 #include <vnet/ethernet/arp_packet.h>
+#include <vnet/ip/ip6_neighbor.h>
 
+#include <vnet/ip/ip.h>
+#include <vnet/ip/lookup.h>
+#ifdef ip6_add_del_route_next_hop
+#define FIB_VERSION 1
+#else
+#include <vnet/fib/fib.h>
+#define FIB_VERSION 2
+#endif
 
 static void
 add_del_addr (ns_addr_t * a, int is_del)
@@ -109,16 +118,41 @@ add_del_neigh (ns_neigh_t * n, int is_del)
       clib_memcpy (&a.ethernet, n->lladdr, ETHER_ADDR_LEN);
       clib_memcpy (&a.ip4, n->dst, sizeof (a.ip4));
 
+
       if (n->nd.ndm_state & NUD_REACHABLE)
+        {
+#if FIB_VERSION == 1
         vnet_arp_set_ip4_over_ethernet (vnet_main, sw_if_index, ~0, &a, 0);
+#else
+        vnet_arp_set_ip4_over_ethernet (vnet_main, sw_if_index,
+                                        &a, 0 /* static */ ,
+                                        0 /* no fib entry */);
+
+#endif /* FIB_VERSION == 1 */
+        }
       else if (n->nd.ndm_state & NUD_FAILED)
+        {
+#if FIB_VERSION == 1
         vnet_arp_unset_ip4_over_ethernet (vnet_main, sw_if_index, ~0, &a);
+#else
+        vnet_arp_unset_ip4_over_ethernet (vnet_main, sw_if_index, &a);
+#endif /* FIB_VERSION == 1 */
+        }
     }
   else if (n->nd.ndm_family == AF_INET6)
     {
       if (n->nd.ndm_state & NUD_REACHABLE)
+	{
+#if FIB_VERSION == 1
         vnet_set_ip6_ethernet_neighbor (vm, sw_if_index,
             (ip6_address_t *) n->dst, n->lladdr, ETHER_ADDR_LEN, 0);
+#else
+        vnet_set_ip6_ethernet_neighbor (vm, sw_if_index,
+            (ip6_address_t *) n->dst, n->lladdr, ETHER_ADDR_LEN,
+            0 /* static */,
+            0 /* no fib entry */);
+#endif /* FIB_VERSION == 1 */
+	}
       else
         vnet_unset_ip6_ethernet_neighbor (vm, sw_if_index,
             (ip6_address_t *) n->dst, n->lladdr, ETHER_ADDR_LEN);
@@ -140,17 +174,55 @@ add_del_route (ns_route_t * r, int is_del)
 
   if (r->rtm.rtm_family == AF_INET)
     {
+#if FIB_VERSION == 1
       ip4_add_del_route_next_hop (&ip4_main,
           is_del ? IP4_ROUTE_FLAG_DEL : IP4_ROUTE_FLAG_ADD,
           (ip4_address_t *) r->dst, r->rtm.rtm_dst_len,
           (ip4_address_t *) r->gateway, sw_if_index, 0, ~0, 0);
+#else
+	    fib_prefix_t prefix;
+	    ip46_address_t nh;
+
+	    memset (&prefix, 0, sizeof (prefix));
+	    prefix.fp_len = r->rtm.rtm_dst_len;
+	    prefix.fp_proto = FIB_PROTOCOL_IP4;
+	    clib_memcpy (&prefix.fp_addr.ip4, r->dst, sizeof (prefix.fp_addr.ip4));
+
+	    memset (&nh, 0, sizeof (nh));
+	    clib_memcpy (&nh.ip4, r->gateway, sizeof (nh.ip4));
+
+	    fib_table_entry_path_add (0, &prefix, FIB_SOURCE_API,
+	                              FIB_ENTRY_FLAG_NONE, prefix.fp_proto,
+	                              &nh, sw_if_index, 0,
+	                              0 /* weight */, NULL,
+	                              FIB_ROUTE_PATH_FLAG_NONE);
+#endif /* FIB_VERSION == 1 */
     }
   else if (r->rtm.rtm_family == AF_INET6)
     {
+#if FIB_VERSION == 1
       ip6_add_del_route_next_hop (&ip6_main,
           is_del ? IP6_ROUTE_FLAG_DEL : IP6_ROUTE_FLAG_ADD,
           (ip6_address_t *) r->dst, r->rtm.rtm_dst_len,
           (ip6_address_t *) r->gateway, sw_if_index, 0, ~0, 0);
+#else
+	    fib_prefix_t prefix;
+	    ip46_address_t nh;
+
+	    memset (&prefix, 0, sizeof (prefix));
+	    prefix.fp_len = r->rtm.rtm_dst_len;
+	    prefix.fp_proto = FIB_PROTOCOL_IP6;
+	    clib_memcpy (&prefix.fp_addr.ip6, r->dst, sizeof (prefix.fp_addr.ip6));
+
+	    memset (&nh, 0, sizeof (nh));
+	    clib_memcpy (&nh.ip6, r->gateway, sizeof (nh.ip6));
+
+	    fib_table_entry_path_add (0, &prefix, FIB_SOURCE_API,
+	                              FIB_ENTRY_FLAG_NONE, prefix.fp_proto,
+	                              &nh, sw_if_index, 0,
+	                              0 /* weight */, NULL,
+	                              FIB_ROUTE_PATH_FLAG_NONE);
+#endif /* FIB_VERSION == 1 */
     }
 }
 
