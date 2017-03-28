@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+VPP_VERSION="17.01-rc0~287-g7e4edc8~b1622"
+
 sysctl -w vm.nr_hugepages=1024
 HUGEPAGES=`sysctl -n  vm.nr_hugepages`
 if [ $HUGEPAGES != 1024 ]; then
@@ -22,7 +24,7 @@ fi
 
 echo "deb https://nexus.fd.io/content/repositories/fd.io.master.ubuntu.trusty.main/ ./" | sudo tee -a /etc/apt/sources.list.d/99fd.io.list
 apt-get -qq update
-apt-get -qq install -y --force-yes vpp vpp-dpdk-dkms bridge-utils lxc
+apt-get -qq install -y --force-yes vpp=$VPP_VERSION vpp-lib=$VPP_VERSION vpp-dpdk-dkms=$VPP_VERSION bridge-utils lxc
 service vpp start
 
 #Configure LXC network to create an inteface for Linux bridge and a unconsumed second inteface
@@ -74,6 +76,18 @@ done
 #UI dependencies
 curl -sL https://deb.nodesource.com/setup_4.x | sudo -E bash -
 sudo apt-get install -y nodejs
+
+#setup the npm proxy config correctly
+if [[ -v http_proxy ]]; then
+        sudo npm config set proxy $http_proxy
+fi
+
+if [[ -v https_proxy ]]; then
+	npm_https_proxy=$(sed 's/https/http/' <<< $https_proxy)
+        sudo npm config set https-proxy $npm_https_proxy
+fi
+
+#install nodeJS backend
 sudo npm install /vagrant/ui/backend/
 sudo mv node_modules/vppsb/node_modules/ /vagrant/ui/backend/
 sudo npm install -g forever
