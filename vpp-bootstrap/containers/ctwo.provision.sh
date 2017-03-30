@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+VPP_VERSION=v17.01
 VPP_DIR=~/vpp
 VPP_GIT="https://git.fd.io/vpp"
-#PLATFORM=vpp_lite
-PLATFORM=vpp
+PLATFORM=vpp_lite
 
 echo Cloning $VPP_GIT
 git clone $VPP_GIT $VPP_DIR
@@ -23,6 +23,7 @@ git clone $VPP_GIT $VPP_DIR
 # Install dependencies
 echo Building $VPP_DIR
 cd $VPP_DIR
+git checkout -b $VPP_VERSION $VPP_VERSION
 make UNATTENDED=yes install-dep
 
 make wipe
@@ -31,10 +32,7 @@ rm -f build-root/.bootstrap.ok
 
 # Build and install packaging
 make PLATFORM=$PLATFORM bootstrap
-make PLATFORM=$PLATFORM pkg-deb
-
-# Install VPPP
-(cd ${VPP_DIR}/build-root/;sudo dpkg -i *.deb)
-
-sudo sed -i 's/dpdk {/dpdk {\n\tno-pci\n/' /etc/vpp/startup.conf
-sudo service vpp start
+make PLATFORM=$PLATFORM build
+#not sure why this is needed to called explicitly
+make PLATFORM=$PLATFORM build-vpp-api
+make PLATFORM=$PLATFORM plugins

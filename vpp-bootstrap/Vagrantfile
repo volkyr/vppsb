@@ -2,17 +2,22 @@
 # vi: set ft=ruby :
 # Copyright (c) 2016 Intel Corporation
 
+unless Vagrant.has_plugin?("vagrant-reload")
+  raise 'vagrant-reload (plugin) is not installed!'
+end
+
 Vagrant.configure(2) do |config|
 
   # Pick the right distro and bootstrap, default is ubuntu1404
-  config.vm.box = "puppetlabs/ubuntu-14.04-64-nocm"
-  vmcpu=(ENV['VPP_VAGRANT_VMCPU'] || 8)
-  vmram=(ENV['VPP_VAGRANT_VMRAM'] || 16384)
+  config.vm.box = "puppetlabs/ubuntu-16.04-64-nocm"
+  vmcpu=(ENV['VPP_VAGRANT_VMCPU'] || 2)
+  vmram=(ENV['VPP_VAGRANT_VMRAM'] || 2048)
 
   # Define some physical ports for your VMs to be used by DPDK
   config.vm.network "private_network", type: "dhcp"
 
   config.vm.provision :shell, :path => File.join(File.dirname(__FILE__),"provision.sh") , privileged: false
+  config.vm.provision :reload
 
   # vagrant-cachier caches apt/yum etc to speed subsequent
   # vagrant up

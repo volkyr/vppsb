@@ -13,6 +13,30 @@
  *
  * Copyright (c) 2016 Intel Corporation
  */
-# INTRO
 
-<insert useful content here>
+# GOAL
+
+The aim of the project is provide a lightweight development environment
+for those looking to quickly start VPP development. Including but not
+limited to training events and workshops. 
+
+# COMMITTERS
+
+Ray Kinsella <ray.kinsella@intel.com>
+
+# INTRO
+vpp-bootstrap is a vagrant image to create an environment to rapidly
+bootstrap vpp development. All required sources, dependencies and test
+tools are included in the environment.
+
+To build the image, simple do
+
+	vagrant up
+
+# CURRENT STATE
+
+Supports VPP 17.01 on VirtualBox and AWS
+
+# Evolution
+
+Support for VPP 17.04.
