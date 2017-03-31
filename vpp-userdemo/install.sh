@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-VPP_VERSION="17.01-rc0~287-g7e4edc8~b1622"
-
 sysctl -w vm.nr_hugepages=1024
 HUGEPAGES=`sysctl -n  vm.nr_hugepages`
 if [ $HUGEPAGES != 1024 ]; then
@@ -22,9 +20,9 @@ if [ $HUGEPAGES != 1024 ]; then
     exit
 fi
 
-echo "deb https://nexus.fd.io/content/repositories/fd.io.master.ubuntu.trusty.main/ ./" | sudo tee -a /etc/apt/sources.list.d/99fd.io.list
+echo "deb https://nexus.fd.io/content/repositories/fd.io.stable.1701.ubuntu.trusty.main/ ./" | sudo tee -a /etc/apt/sources.list.d/99fd.io.list
 apt-get -qq update
-apt-get -qq install -y --force-yes vpp=$VPP_VERSION vpp-lib=$VPP_VERSION vpp-dpdk-dkms=$VPP_VERSION bridge-utils lxc
+apt-get -qq install -y --force-yes vpp vpp-lib vpp-dpdk-dkms bridge-utils lxc
 service vpp start
 
 #Configure LXC network to create an inteface for Linux bridge and a unconsumed second inteface
