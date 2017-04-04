@@ -8,10 +8,10 @@ end
 
 Vagrant.configure(2) do |config|
 
-  # Pick the right distro and bootstrap, default is ubuntu1404
+  # Pick the right distro and bootstrap, default is ubuntu1604
   config.vm.box = "puppetlabs/ubuntu-16.04-64-nocm"
   vmcpu=(ENV['VPP_VAGRANT_VMCPU'] || 2)
-  vmram=(ENV['VPP_VAGRANT_VMRAM'] || 2048)
+  vmram=(ENV['VPP_VAGRANT_VMRAM'] || 1024)
 
   # Define some physical ports for your VMs to be used by DPDK
   config.vm.network "private_network", type: "dhcp"
@@ -67,8 +67,8 @@ Vagrant.configure(2) do |config|
       #to enable `vagrant ssh` to work.
       aws.security_groups = [ "permit-ssh", "default" ]
 
-      #Amazon Machine Instance (AMI) to use, default is Ubuntu Trusty (HVM).
-      aws.ami = "ami-0c59f37f"
+      #Amazon Machine Instance (AMI) to use, default is Ubuntu Xenial (HVM).
+      aws.ami = "ami-405f7226"
 
       #EC2 instance type (how much cpu/mem resources to give the instance).
       aws.instance_type = "t2.micro"
