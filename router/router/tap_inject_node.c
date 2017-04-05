@@ -28,6 +28,10 @@ enum {
   NEXT_NEIGHBOR_ICMP6,
 };
 
+/**
+ * @brief Dynamically added tap_inject DPO type
+ */
+dpo_type_t tap_inject_dpo_type;
 
 static inline void
 tap_inject_tap_send_buffer (int fd, vlib_buffer_t * b)
@@ -312,6 +316,42 @@ VLIB_REGISTER_NODE (tap_inject_rx_node) = {
   .vector_size = sizeof (u32),
 };
 
+/**
+ * @brief no-op lock function.
+ */
+static void
+tap_inject_dpo_lock (dpo_id_t * dpo)
+{
+}
+
+/**
+ * @brief no-op unlock function.
+ */
+static void
+tap_inject_dpo_unlock (dpo_id_t * dpo)
+{
+}
+
+u8 *
+format_tap_inject_dpo (u8 * s, va_list * args)
+{
+  return (format (s, "tap-inject:[%d]", 0));
+}
+
+const static dpo_vft_t tap_inject_vft = {
+  .dv_lock = tap_inject_dpo_lock,
+  .dv_unlock = tap_inject_dpo_unlock,
+  .dv_format = format_tap_inject_dpo,
+};
+
+const static char *const tap_inject_tx_nodes[] = {
+  "tap-inject-tx",
+  NULL,
+};
+
+const static char *const *const tap_inject_nodes[DPO_PROTO_NUM] = {
+  [DPO_PROTO_IP6] = tap_inject_tx_nodes,
+};
 
 static clib_error_t *
 tap_inject_init (vlib_main_t * vm)
@@ -321,6 +361,8 @@ tap_inject_init (vlib_main_t * vm)
   im->rx_node_index = tap_inject_rx_node.index;
   im->tx_node_index = tap_inject_tx_node.index;
   im->neighbor_node_index = tap_inject_neighbor_node.index;
+
+  tap_inject_dpo_type = dpo_register_new_type (&tap_inject_vft, tap_inject_nodes);
 
   vec_alloc (im->rx_buffers, NUM_BUFFERS_TO_ALLOC);
   vec_reset_length (im->rx_buffers);

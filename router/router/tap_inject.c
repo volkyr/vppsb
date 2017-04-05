@@ -16,7 +16,17 @@
 
 #include "tap_inject.h"
 
+#include <vnet/ip/ip.h>
+#include <vnet/ip/lookup.h>
+#ifdef ip6_add_del_route_next_hop
+#define FIB_VERSION 1
+#else
+#include <vnet/fib/fib.h>
+#define FIB_VERSION 2
+#endif
+
 static tap_inject_main_t tap_inject_main;
+extern dpo_type_t tap_inject_dpo_type;
 
 tap_inject_main_t *
 tap_inject_get_main (void)
@@ -84,12 +94,12 @@ tap_inject_lookup_sw_if_index_from_tap_if_index (u32 tap_if_index)
   return sw_if_index ? *(u32 *)sw_if_index : ~0;
 }
 
-
-clib_error_t *
-vlib_plugin_register (vlib_main_t * vm, vnet_plugin_handoff_t * h, int f)
-{
-  return 0;
-}
+/* *INDENT-OFF* */
+VLIB_PLUGIN_REGISTER () = {
+    // .version = VPP_BUILD_VER, FIXME
+    .description = "router",
+};
+/* *INDENT-ON* */
 
 
 static void
@@ -135,6 +145,7 @@ tap_inject_enable (void)
   ip6_register_protocol (IP_PROTOCOL_TCP, im->tx_node_index);
   ip6_register_protocol (IP_PROTOCOL_UDP, im->tx_node_index);
 
+#if FIB_VERSION == 1
   /* Add IPv4 multicast route. */
   {
     ip4_add_del_route_args_t a;
@@ -163,6 +174,30 @@ tap_inject_enable (void)
 
     ip4_add_del_route (&ip4_main, &a);
   }
+#else
+  {
+    dpo_proto_t proto = 0;
+    dpo_id_t dpo = DPO_INVALID;
+    fib_prefix_t pfx = {};
+
+    pfx.fp_addr.ip4.as_u32 = 0x000000E0; /* 224.0.0.0 */
+    pfx.fp_len = 24;
+    pfx.fp_proto = FIB_PROTOCOL_IP4;
+    proto = DPO_PROTO_IP4;
+
+    vlib_node_add_next (vm, ip4_lookup_node.index, im->tx_node_index);
+
+    dpo_set(&dpo, tap_inject_dpo_type, proto, ~0);
+
+    fib_table_entry_special_dpo_add(0,
+  				  &pfx,
+				  FIB_SOURCE_API,
+  				  FIB_ENTRY_FLAG_EXCLUSIVE,
+  				  &dpo);
+
+    dpo_reset(&dpo);
+  }
+#endif /* FIB_VERSION == 1 */
 
   im->flags |= TAP_INJECT_F_ENABLED;
 

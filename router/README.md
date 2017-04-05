@@ -34,7 +34,7 @@ Now build everything and create a link to the plugin in vpp's plugin path.
 ```
 $ cd build-root
 $ ./bootstrap.sh
-$ make V=0 PLATFORM=vpp TAG=vpp_debug router-install
+$ make V=0 PLATFORM=vpp TAG=vpp_debug netlink-install router-install
 $ ln -sf /git/vpp/build-root/install-vpp_debug-native/router/lib64/router.so.0.0.0 \
          /usr/lib/vpp_plugins/router.so
 ```
@@ -43,7 +43,7 @@ Once VPP is running and the plugin is loaded, data plane interfaces can
 be tapped.
 
 ```
-$ vppctl tap inject arp,icmp4 from TenGigabitEthernet2/0/0 as vpp0
+$ vppctl enable tap-inject
 ```
 
 The host operating system should see a tap named 'vpp0' with the same hardware
@@ -58,7 +58,7 @@ plane's default fib.
 
 Currently the router plugin handles ARP, locally destined ICMPv4 and OSPF
 traffic. It supports the classifier directing packets from an ip4-table to
-the 'tap-inject-classified' node (for handling multicast OSPF and IGMP).
+the 'tap-inject-neighbor' node (for handling multicast OSPF and IGMP).
 
 ### Objective
 

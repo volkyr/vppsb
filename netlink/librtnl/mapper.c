@@ -96,7 +96,8 @@ int mapper_add_del_route(mapper_ns_t *ns, ns_route_t *route, int del)
     fib_table_entry_path_add (ns->v6fib_index, &prefix, FIB_SOURCE_API,
                               FIB_ENTRY_FLAG_NONE, prefix.fp_proto,
                               &nh, map->sw_if_index, ns->v6fib_index,
-                              0 /* weight */, MPLS_LABEL_INVALID,
+                              0 /* weight */,
+                              (mpls_label_t *) MPLS_LABEL_INVALID,
                               FIB_ROUTE_PATH_FLAG_NONE);
 #endif /* FIB_VERSION == 1 */
   } else {
@@ -126,7 +127,8 @@ int mapper_add_del_route(mapper_ns_t *ns, ns_route_t *route, int del)
     fib_table_entry_path_add (ns->v4fib_index, &prefix, FIB_SOURCE_API,
                               FIB_ENTRY_FLAG_NONE, prefix.fp_proto,
                               &nh, map->sw_if_index, ns->v4fib_index,
-                              0 /* weight */, MPLS_LABEL_INVALID,
+                              0 /* weight */,
+                              (mpls_label_t *) MPLS_LABEL_INVALID,
                               FIB_ROUTE_PATH_FLAG_NONE);
 #endif /* FIB_VERSION == 1 */
   }

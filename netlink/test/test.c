@@ -200,11 +200,10 @@ VLIB_CLI_COMMAND (mapper_iface_command, static) = {
     .function = mapper_iface_command_fn,
 };
 
-clib_error_t *
-vlib_plugin_register (vlib_main_t * vm, vnet_plugin_handoff_t * h,
-                      int from_early_init)
-{
-  clib_warning("Loaded module");
-  return 0;
-}
+/* *INDENT-OFF* */
+VLIB_PLUGIN_REGISTER () = {
+    // .version = VPP_BUILD_VER, FIXME
+    .description = "netlink",
+};
+/* *INDENT-ON* */
 
