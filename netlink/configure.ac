@@ -6,13 +6,15 @@ AM_PROG_AS
 AC_PROG_CC
 AM_PROG_CC_C_O
 
-AC_ARG_WITH(plugin-toolkit,
-            AC_HELP_STRING([--with-plugin-toolkit],
-            [build using the vpp toolkit]),
-            [with_plugin_toolkit=${prefix}/include],
-            [with_plugin_toolkit=.])
+AC_ARG_VAR(VPP_DIR,[ vpp build directory ])
+AM_CONDITIONAL([VPP_DIR_SET], [test ! -z "$VPP_DIR"])
 
-AC_SUBST(TOOLKIT_INCLUDE,[${with_plugin_toolkit}])
-AM_CONDITIONAL(WITH_PLUGIN_TOOLKIT, test "$with_plugin_toolkit" != ".")
+AC_ARG_ENABLE([debug],
+[  --enable-debug    Turn on debugging],
+ [if test x$enableval = xyes; then
+    AC_DEFINE(DEBUG, 1, [Define this to enable debug.])
+    debug=true
+ fi], [debug=false])
+AM_CONDITIONAL([DEBUG], [test x$debug = xtrue])
 
 AC_OUTPUT([Makefile])

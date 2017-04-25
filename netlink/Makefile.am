@@ -13,7 +13,21 @@
 
 AUTOMAKE_OPTIONS = foreign subdir-objects
 
-AM_CFLAGS = -Wall -I@TOOLKIT_INCLUDE@
+AM_CFLAGS = -Wall -fstack-protector -fPIC -Werror -g -DFORTIFY_SOURCE=2
+if DEBUG
+AM_CFLAGS += -O0 -DCLIB_DEBUG
+vpp_build = vpp_debug-native
+else
+AM_CFLAGS += -O2
+vpp_build = vpp-native
+endif
+
+if VPP_DIR_SET
+vpp_install = @VPP_DIR@/build-root/install-$(vpp_build)
+AM_CFLAGS += -I$(vpp_install)/vpp/include/
+else
+AM_CFLAGS += -Wall
+endif
 
 lib_LTLIBRARIES = librtnl.la
 
@@ -33,8 +47,9 @@ testrtnl_plugin_la_SOURCES = test/test.c
 testrtnl_plugin_la_LDFLAGS = -module
 testrtnl_plugin_la_LIBADD = librtnl.la
 
-if WITH_PLUGIN_TOOLKIT
-install-data-hook:
-	mkdir /usr/lib/vpp_plugins || true
-	cp $(prefix)/lib/testnl_plugin.so.*.*.* /usr/lib/vpp_plugins
+if VPP_DIR_SET
+install: install-am
+	mkdir -p $(vpp_install)/vpp/lib64/vpp_plugins/
+	cp $(prefix)/lib/testrtnl_plugin.so.*.*.* $(vpp_install)/vpp/lib64/vpp_plugins/testrtnl_plugin.so
+	cp $(prefix)/lib/librtnl.so $(vpp_install)/vpp/lib64/librtnl.so
 endif

@@ -18,6 +18,7 @@
 #include <vnet/plugin/plugin.h>
 #include <librtnl/mapper.h>
 #include <vnet/ip/ip.h>
+#include <vnet/fib/fib.h>
 
 u32 handles[10];
 
@@ -121,17 +122,8 @@ mapper_ns_add_command_fn (vlib_main_t * vm,
   if (!strcmp(nsname, "default"))
     nsname[0] = 0;
 
-#ifdef find_ip4_fib_by_table_index_or_id
-  u32 fib4 = find_ip4_fib_by_table_index_or_id(&ip4_main, table_id, 0) - ip4_main.fibs;
-#else
-  u32 fib4 = fib_table_id_find_fib_index (FIB_PROTOCOL_IP4, table_id);
-#endif
-
-#ifdef find_ip6_fib_by_table_index_or_id
-  u32 fib6 = find_ip6_fib_by_table_index_or_id(&ip6_main, table_id, 0) - ip6_main.fibs;
-#else
-  u32 fib6 = fib_table_id_find_fib_index (FIB_PROTOCOL_IP6, table_id);
-#endif
+  u32 fib4 = ip4_fib_index_from_table_id(table_id);
+  u32 fib6 = ip6_fib_index_from_table_id(table_id);
 
   if (mapper_add_ns(nsname, fib4, fib6, &mapper_indexes[index]))
     return clib_error_return(0, "Could not add ns %s", nsname);
@@ -202,8 +194,8 @@ VLIB_CLI_COMMAND (mapper_iface_command, static) = {
 
 /* *INDENT-OFF* */
 VLIB_PLUGIN_REGISTER () = {
-    // .version = VPP_BUILD_VER, FIXME
-    .description = "netlink",
+  //.version = VPP_BUILD_VER, FIXME
+  .description = "netlink",
 };
 /* *INDENT-ON* */
 

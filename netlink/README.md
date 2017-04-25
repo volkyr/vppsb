@@ -4,6 +4,17 @@ This VPP package provides a rtnetlink-based library to be used by [VPP](http://f
 
 ## HowTo
 
+The library and test plugin can be compiled by running the following commands from the plugin directory:
+```bash
+libtoolize
+aclocal
+autoconf
+automake --add-missing
+./configure
+make
+sudo make install
+```
+
 The library and test plugin can be compiled by copying netlink.mk into VPP's build tree build-data/packages/ directory and using VPP make target netlink-install.
 
 Note that VPP build system can be configured to look in other directories for additional build-data/packages/ directories by adding those to build-root/build-config.mk SOURCE_PATH variable.
