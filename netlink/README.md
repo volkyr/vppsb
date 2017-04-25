@@ -15,15 +15,23 @@ make
 sudo make install
 ```
 
-The library and test plugin can be compiled by copying netlink.mk into VPP's build tree build-data/packages/ directory and using VPP make target netlink-install.
+If VPP is not installed, but rather built in a separate directory, you can use the VPP_DIR 'configure' argument.
 
-Note that VPP build system can be configured to look in other directories for additional build-data/packages/ directories by adding those to build-root/build-config.mk SOURCE_PATH variable.
+```bash
+./configure VPP_DIR=<path/to/vpp/directory>
+make
+make install
+```
+
+You can also enable debug with the 'configure' --enable-debug option.
+
+
 
 ## Administrativa
 
 ### Current status
 
-This library is still under active development, which means the defined headers and functions are subject to changes without notice.
+This library is currently looking for some maintainers.
 
 ### Objective
 
