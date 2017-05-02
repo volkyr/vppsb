@@ -12,10 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-VPP_VERSION=v17.01
+VPP_VERSION=v17.04
 VPP_DIR=~/vpp
 VPP_GIT="https://git.fd.io/vpp"
-PLATFORM=vpp_lite
 
 echo Cloning $VPP_GIT
 git clone $VPP_GIT $VPP_DIR
@@ -31,8 +30,5 @@ make wipe
 rm -f build-root/.bootstrap.ok
 
 # Build and install packaging
-make PLATFORM=$PLATFORM bootstrap
-make PLATFORM=$PLATFORM build
-#not sure why this is needed to called explicitly
-make PLATFORM=$PLATFORM build-vpp-api
-make PLATFORM=$PLATFORM plugins
+make bootstrap
+make build

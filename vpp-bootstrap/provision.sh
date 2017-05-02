@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-PACKAGE_REPO="https://nexus.fd.io/content/repositories/fd.io.stable.1701.ubuntu.trusty.main/"
+PACKAGE_REPO="https://nexus.fd.io/content/repositories/fd.io.stable.1704.ubuntu.xenial.main/"
 HOME_DIR="/home/$USER"
 RC_LOCAL="/etc/rc.local"
 SSH_OPTIONS="-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"
@@ -84,20 +84,19 @@ function get_field() {
     echo $value
 }
 
-sudo sysctl -w vm.nr_hugepages=128
-HUGEPAGES=`sudo sysctl -n  vm.nr_hugepages`
-if [ $HUGEPAGES != 128 ]; then
-    echo "ERROR: Unable to get 128 hugepages, only got $HUGEPAGES.  Cannot finish."
-    exit
-fi
-
 echo "deb $PACKAGE_REPO ./" | sudo tee -a /etc/apt/sources.list.d/99fd.io.list
 sudo apt-get -qq update
-sudo apt-get -qq install -y --force-yes lxc bridge-utils tmux vpp vpp vpp-dpdk-dkms
+sudo apt-get -qq install -y --force-yes linux-image-extra-$(uname -r) lxc bridge-utils tmux
+sudo apt-get -qq install -y --force-yes vpp vpp vpp-dpdk-dkms vpp-plugins
 
-#Fix VPP on the host to use 128 hugepages
-sudo sed -i 's/vm.nr_hugepages=1024/vm.nr_hugepages=128/' /etc/sysctl.d/80-vpp.conf
-sudo sed -i 's/kernel.shmmax=2147483648/kernel.shmmax=268435456/' /etc/sysctl.d/80-vpp.conf
+#Disable DPDK to make memory requirements more modest
+sudo sed -i_dpdk '47,52d' /etc/vpp/startup.conf
+echo -e "plugins {\n\tplugin dpdk_plugin.so { disable }\n}" | sudo tee -a /etc/vpp/startup.conf
+
+#Fix VPP on the host to use 32 hugepages
+echo -e "heapsize 64M" | sudo tee -a /etc/vpp/startup.conf
+sudo sed -i 's/vm.nr_hugepages=1024/vm.nr_hugepages=32/' /etc/sysctl.d/80-vpp.conf
+sudo sed -i 's/kernel.shmmax=2147483648/kernel.shmmax=67018864/' /etc/sysctl.d/80-vpp.conf
 
 #Provision containers with two network connections, second connection is unconnected
 echo -e "lxc.network.name=veth0" | sudo tee -a /etc/lxc/default.conf
