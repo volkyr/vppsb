@@ -37,9 +37,9 @@ AM_CFLAGS += -Wall '-DVCOM_DEBUG=0'
 endif
 
 if VPP_DIR_SET
-vpp_install = @VPP_DIR@/build-root/install-$(vpp_build)
-AM_CFLAGS += -I$(vpp_install)/vpp/include/
-AM_LDFLAGS += -L$(vpp_install)/vpp/lib64/
+vpp_install_dir = @VPP_DIR@/build-root/install-$(vpp_build)/vpp
+AM_CFLAGS += -I$(vpp_install_dir)/include/
+AM_LDFLAGS += -L$(vpp_install_dir)/lib64/
 endif
 
 
