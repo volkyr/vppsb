@@ -21,27 +21,6 @@
 
 #include <stdarg.h>
 
-#include <svm/svm_fifo_segment.h>
-#include <vlibmemory/api.h>
-#include <vpp/api/vpe_msg_enum.h>
-#include <vnet/session/application_interface.h>
-
-#define vl_typedefs		/* define message structures */
-#include <vpp/api/vpe_all_api_h.h>
-#undef vl_typedefs
-
-/* declare message handlers for each api */
-
-#define vl_endianfun		/* define message structures */
-#include <vpp/api/vpe_all_api_h.h>
-#undef vl_endianfun
-
-/* instantiate all the print functions we know about */
-#define vl_print(handle, ...)
-#define vl_printfun
-#include <vpp/api/vpe_all_api_h.h>
-#undef vl_printfun
-
 #include <libvcl-ldpreload/vcom_socket_wrapper.h>
 #include <libvcl-ldpreload/vcom.h>
 #include <sys/time.h>
