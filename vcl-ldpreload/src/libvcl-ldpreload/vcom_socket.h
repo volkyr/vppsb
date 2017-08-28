@@ -17,6 +17,7 @@
 #define included_vcom_socket_h
 
 #include <libvcl-ldpreload/vcom_glibc_socket.h>
+#include <vppinfra/types.h>
 
 #define INVALID_SESSION_ID (~0)
 #define INVALID_FD (~0)
