@@ -62,6 +62,7 @@
 #include <sys/socket.h>
 #include <sys/ioctl.h>
 #include <sys/select.h>
+#include <sys/epoll.h>
 #include <sys/uio.h>
 #include <stdlib.h>
 
@@ -105,7 +106,7 @@
 #ifdef HAVE_ACCEPT4
 int
 libc_accept4 (int sockfd,
-	      struct sockaddr *addr, socklen_t * addrlen, int flags);
+              struct sockaddr *addr, socklen_t * addrlen, int flags);
 #else /* HAVE_ACCEPT4 */
 int libc_accept (int sockfd, struct sockaddr *addr, socklen_t * addrlen);
 #endif /* HAVE_ACCEPT4 */
@@ -136,7 +137,7 @@ int libc_getsockname (int sockfd, struct sockaddr *addr, socklen_t * addrlen);
 
 int
 libc_getsockopt (int sockfd,
-		 int level, int optname, void *optval, socklen_t * optlen);
+                 int level, int optname, void *optval, socklen_t * optlen);
 
 int libc_listen (int sockfd, int backlog);
 
@@ -146,9 +147,9 @@ int libc_recv (int sockfd, void *buf, size_t len, int flags);
 
 int
 libc_recvfrom (int sockfd,
-	       void *buf,
-	       size_t len,
-	       int flags, struct sockaddr *src_addr, socklen_t * addrlen);
+               void *buf,
+               size_t len,
+               int flags, struct sockaddr *src_addr, socklen_t * addrlen);
 
 int libc_recvmsg (int sockfd, struct msghdr *msg, int flags);
 
@@ -158,14 +159,14 @@ int libc_sendmsg (int sockfd, const struct msghdr *msg, int flags);
 
 int
 libc_sendto (int sockfd,
-	     const void *buf,
-	     size_t len,
-	     int flags, const struct sockaddr *dst_addr, socklen_t addrlen);
+             const void *buf,
+             size_t len,
+             int flags, const struct sockaddr *dst_addr, socklen_t addrlen);
 
 int
 libc_setsockopt (int sockfd,
-		 int level, int optname, const void *optval,
-		 socklen_t optlen);
+                 int level, int optname, const void *optval,
+                 socklen_t optlen);
 
 int libc_socket (int domain, int type, int protocol);
 
@@ -177,18 +178,32 @@ int libc_shutdown (int fd, int how);
 
 int
 libc_select (int __nfds, fd_set * __restrict __readfds,
-	     fd_set * __restrict __writefds,
-	     fd_set * __restrict __exceptfds,
-	     struct timeval *__restrict __timeout);
+             fd_set * __restrict __writefds,
+             fd_set * __restrict __exceptfds,
+             struct timeval *__restrict __timeout);
 
 #ifdef __USE_XOPEN2K
 int
 libc_pselect (int __nfds, fd_set * __restrict __readfds,
-	      fd_set * __restrict __writefds,
-	      fd_set * __restrict __exceptfds,
-	      const struct timespec *__restrict __timeout,
-	      const __sigset_t * __restrict __sigmask);
+              fd_set * __restrict __writefds,
+              fd_set * __restrict __exceptfds,
+              const struct timespec *__restrict __timeout,
+              const __sigset_t * __restrict __sigmask);
 #endif
+
+int libc_epoll_create (int __size);
+
+int libc_epoll_create1 (int __flags);
+
+int libc_epoll_ctl (int __epfd, int __op, int __fd,
+                    struct epoll_event *__event);
+
+int libc_epoll_wait (int __epfd, struct epoll_event *__events,
+                     int __maxevents, int __timeout);
+
+int libc_epoll_pwait (int __epfd, struct epoll_event *__events,
+                      int __maxevents, int __timeout,
+                      const __sigset_t *__ss);
 
 void swrap_constructor (void);
 

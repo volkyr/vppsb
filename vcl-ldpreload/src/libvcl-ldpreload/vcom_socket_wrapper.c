@@ -103,13 +103,13 @@ static pthread_mutex_t libc_symbol_binding_mutex = PTHREAD_MUTEX_INITIALIZER;
 #else
 static void
 swrap_log (enum swrap_dbglvl_e dbglvl, const char *func,
-	   const char *format, ...)
+           const char *format, ...)
 PRINTF_ATTRIBUTE (3, 4);
 #define SWRAP_LOG(dbglvl, ...) swrap_log((dbglvl), __func__, __VA_ARGS__)
 
      static void
        swrap_log (enum swrap_dbglvl_e dbglvl,
-		  const char *func, const char *format, ...)
+                  const char *func, const char *format, ...)
 {
   char buffer[1024];
   va_list va;
@@ -122,28 +122,28 @@ PRINTF_ATTRIBUTE (3, 4);
   if (lvl >= dbglvl)
     {
       switch (dbglvl)
-	{
-	case SWRAP_LOG_ERROR:
-	  fprintf (stderr,
-		   "SWRAP_ERROR(%d) - %s: %s\n",
-		   (int) getpid (), func, buffer);
-	  break;
-	case SWRAP_LOG_WARN:
-	  fprintf (stderr,
-		   "SWRAP_WARN(%d) - %s: %s\n",
-		   (int) getpid (), func, buffer);
-	  break;
-	case SWRAP_LOG_DEBUG:
-	  fprintf (stderr,
-		   "SWRAP_DEBUG(%d) - %s: %s\n",
-		   (int) getpid (), func, buffer);
-	  break;
-	case SWRAP_LOG_TRACE:
-	  fprintf (stderr,
-		   "SWRAP_TRACE(%d) - %s: %s\n",
-		   (int) getpid (), func, buffer);
-	  break;
-	}
+        {
+        case SWRAP_LOG_ERROR:
+          fprintf (stderr,
+                   "SWRAP_ERROR(%d) - %s: %s\n",
+                   (int) getpid (), func, buffer);
+          break;
+        case SWRAP_LOG_WARN:
+          fprintf (stderr,
+                   "SWRAP_WARN(%d) - %s: %s\n",
+                   (int) getpid (), func, buffer);
+          break;
+        case SWRAP_LOG_DEBUG:
+          fprintf (stderr,
+                   "SWRAP_DEBUG(%d) - %s: %s\n",
+                   (int) getpid (), func, buffer);
+          break;
+        case SWRAP_LOG_TRACE:
+          fprintf (stderr,
+                   "SWRAP_TRACE(%d) - %s: %s\n",
+                   (int) getpid (), func, buffer);
+          break;
+        }
     }
 }
 #endif
@@ -155,18 +155,18 @@ PRINTF_ATTRIBUTE (3, 4);
 
 #ifdef HAVE_ACCEPT4
 typedef int (*__libc_accept4) (int sockfd,
-			       struct sockaddr * addr,
-			       socklen_t * addrlen, int flags);
+                               struct sockaddr * addr,
+                               socklen_t * addrlen, int flags);
 #else
 typedef int (*__libc_accept) (int sockfd,
-			      struct sockaddr * addr, socklen_t * addrlen);
+                              struct sockaddr * addr, socklen_t * addrlen);
 #endif
 typedef int (*__libc_bind) (int sockfd,
-			    const struct sockaddr * addr, socklen_t addrlen);
+                            const struct sockaddr * addr, socklen_t addrlen);
 typedef int (*__libc_close) (int fd);
 typedef int (*__libc_connect) (int sockfd,
-			       const struct sockaddr * addr,
-			       socklen_t addrlen);
+                               const struct sockaddr * addr,
+                               socklen_t addrlen);
 
 #if 0
 /* TBD: dup and dup2 to be implemented later */
@@ -183,15 +183,15 @@ typedef FILE *(*__libc_fopen64) (const char *name, const char *mode);
 typedef int (*__libc_eventfd) (int count, int flags);
 #endif
 typedef int (*__libc_getpeername) (int sockfd,
-				   struct sockaddr * addr,
-				   socklen_t * addrlen);
+                                   struct sockaddr * addr,
+                                   socklen_t * addrlen);
 typedef int (*__libc_getsockname) (int sockfd,
-				   struct sockaddr * addr,
-				   socklen_t * addrlen);
+                                   struct sockaddr * addr,
+                                   socklen_t * addrlen);
 typedef int (*__libc_getsockopt) (int sockfd,
-				  int level,
-				  int optname,
-				  void *optval, socklen_t * optlen);
+                                  int level,
+                                  int optname,
+                                  void *optval, socklen_t * optlen);
 typedef int (*__libc_ioctl) (int d, unsigned long int request, ...);
 typedef int (*__libc_listen) (int sockfd, int backlog);
 typedef int (*__libc_open) (const char *pathname, int flags, mode_t mode);
@@ -202,52 +202,67 @@ typedef int (*__libc_openat) (int dirfd, const char *path, int flags, ...);
 typedef int (*__libc_pipe) (int pipefd[2]);
 typedef int (*__libc_read) (int fd, void *buf, size_t count);
 typedef ssize_t (*__libc_readv) (int fd, const struct iovec * iov,
-				 int iovcnt);
+                                 int iovcnt);
 typedef int (*__libc_recv) (int sockfd, void *buf, size_t len, int flags);
 typedef int (*__libc_recvfrom) (int sockfd,
-				void *buf,
-				size_t len,
-				int flags,
-				struct sockaddr * src_addr,
-				socklen_t * addrlen);
+                                void *buf,
+                                size_t len,
+                                int flags,
+                                struct sockaddr * src_addr,
+                                socklen_t * addrlen);
 typedef int (*__libc_recvmsg) (int sockfd, const struct msghdr * msg,
-			       int flags);
+                               int flags);
 typedef int (*__libc_send) (int sockfd, const void *buf, size_t len,
-			    int flags);
+                            int flags);
 typedef int (*__libc_sendmsg) (int sockfd, const struct msghdr * msg,
-			       int flags);
+                               int flags);
 typedef int (*__libc_sendto) (int sockfd, const void *buf, size_t len,
-			      int flags, const struct sockaddr * dst_addr,
-			      socklen_t addrlen);
+                              int flags, const struct sockaddr * dst_addr,
+                              socklen_t addrlen);
 typedef int (*__libc_setsockopt) (int sockfd, int level, int optname,
-				  const void *optval, socklen_t optlen);
+                                  const void *optval, socklen_t optlen);
 #ifdef HAVE_SIGNALFD
 typedef int (*__libc_signalfd) (int fd, const sigset_t * mask, int flags);
 #endif
 typedef int (*__libc_socket) (int domain, int type, int protocol);
 typedef int (*__libc_socketpair) (int domain, int type, int protocol,
-				  int sv[2]);
+                                  int sv[2]);
 #ifdef HAVE_TIMERFD_CREATE
 typedef int (*__libc_timerfd_create) (int clockid, int flags);
 #endif
 typedef ssize_t (*__libc_write) (int fd, const void *buf, size_t count);
 typedef ssize_t (*__libc_writev) (int fd, const struct iovec * iov,
-				  int iovcnt);
+                                  int iovcnt);
 
 typedef int (*__libc_shutdown) (int fd, int how);
 
 typedef int (*__libc_select) (int __nfds, fd_set * __restrict __readfds,
-			      fd_set * __restrict __writefds,
-			      fd_set * __restrict __exceptfds,
-			      struct timeval * __restrict __timeout);
+                              fd_set * __restrict __writefds,
+                              fd_set * __restrict __exceptfds,
+                              struct timeval * __restrict __timeout);
 
 #ifdef __USE_XOPEN2K
 typedef int (*__libc_pselect) (int __nfds, fd_set * __restrict __readfds,
-			       fd_set * __restrict __writefds,
-			       fd_set * __restrict __exceptfds,
-			       const struct timespec * __restrict __timeout,
-			       const __sigset_t * __restrict __sigmask);
+                               fd_set * __restrict __writefds,
+                               fd_set * __restrict __exceptfds,
+                               const struct timespec * __restrict __timeout,
+                               const __sigset_t * __restrict __sigmask);
 #endif
+
+typedef int (*__libc_epoll_create) (int __size);
+
+typedef int (*__libc_epoll_create1) (int __flags);
+
+typedef int (*__libc_epoll_ctl) (int __epfd, int __op, int __fd,
+                                 struct epoll_event *__event);
+
+typedef int (*__libc_epoll_wait) (int __epfd, struct epoll_event *__events,
+                                  int __maxevents, int __timeout);
+
+typedef int (*__libc_epoll_pwait) (int __epfd, struct epoll_event *__events,
+                                   int __maxevents, int __timeout,
+                                   const __sigset_t *__ss);
+
 
 #define SWRAP_SYMBOL_ENTRY(i) \
         union { \
@@ -314,6 +329,11 @@ struct swrap_libc_symbols
 #ifdef __USE_XOPEN2K
   SWRAP_SYMBOL_ENTRY (pselect);
 #endif
+  SWRAP_SYMBOL_ENTRY (epoll_create);
+  SWRAP_SYMBOL_ENTRY (epoll_create1);
+  SWRAP_SYMBOL_ENTRY (epoll_ctl);
+  SWRAP_SYMBOL_ENTRY (epoll_wait);
+  SWRAP_SYMBOL_ENTRY (epoll_pwait);
 };
 
 struct swrap
@@ -367,35 +387,35 @@ swrap_load_lib_handle (enum swrap_lib lib)
       handle = swrap.libc.handle;
 #ifdef LIBC_SO
       if (handle == NULL)
-	{
-	  handle = dlopen (LIBC_SO, flags);
+        {
+          handle = dlopen (LIBC_SO, flags);
 
-	  swrap.libc.handle = handle;
-	}
+          swrap.libc.handle = handle;
+        }
 #endif
       if (handle == NULL)
-	{
-	  for (i = 10; i >= 0; i--)
-	    {
-	      char soname[256] = { 0 };
+        {
+          for (i = 10; i >= 0; i--)
+            {
+              char soname[256] = { 0 };
 
-	      snprintf (soname, sizeof (soname), "libc.so.%d", i);
-	      handle = dlopen (soname, flags);
-	      if (handle != NULL)
-		{
-		  break;
-		}
-	    }
+              snprintf (soname, sizeof (soname), "libc.so.%d", i);
+              handle = dlopen (soname, flags);
+              if (handle != NULL)
+                {
+                  break;
+                }
+            }
 
-	  swrap.libc.handle = handle;
-	}
+          swrap.libc.handle = handle;
+        }
       break;
     }
 
   if (handle == NULL)
     {
       SWRAP_LOG (SWRAP_LOG_ERROR,
-		 "Failed to dlopen library: %s\n", dlerror ());
+                 "Failed to dlopen library: %s\n", dlerror ());
       exit (-1);
     }
 
@@ -414,12 +434,12 @@ _swrap_bind_symbol (enum swrap_lib lib, const char *fn_name)
   if (func == NULL)
     {
       SWRAP_LOG (SWRAP_LOG_ERROR,
-		 "Failed to find %s: %s\n", fn_name, dlerror ());
+                 "Failed to find %s: %s\n", fn_name, dlerror ());
       exit (-1);
     }
 
   SWRAP_LOG (SWRAP_LOG_TRACE,
-	     "Loaded %s from %s", fn_name, swrap_str_lib (lib));
+             "Loaded %s from %s", fn_name, swrap_str_lib (lib));
 
   return func;
 }
@@ -443,7 +463,7 @@ _swrap_bind_symbol (enum swrap_lib lib, const char *fn_name)
 #ifdef HAVE_ACCEPT4
 int
 libc_accept4 (int sockfd,
-	      struct sockaddr *addr, socklen_t * addrlen, int flags)
+              struct sockaddr *addr, socklen_t * addrlen, int flags)
 {
   swrap_bind_symbol_libc (accept4);
 
@@ -529,8 +549,8 @@ libc_vfcntl (int fd, int cmd, va_list ap)
     }
 
   rc = swrap.libc.symbols._libc_fcntl.f (fd,
-					 cmd,
-					 args[0], args[1], args[2], args[3]);
+                                         cmd,
+                                         args[0], args[1], args[2], args[3]);
 
   return rc;
 }
@@ -553,13 +573,13 @@ libc_getsockname (int sockfd, struct sockaddr *addr, socklen_t * addrlen)
 
 int
 libc_getsockopt (int sockfd,
-		 int level, int optname, void *optval, socklen_t * optlen)
+                 int level, int optname, void *optval, socklen_t * optlen)
 {
   swrap_bind_symbol_libc (getsockopt);
 
   return swrap.libc.symbols._libc_getsockopt.f (sockfd,
-						level,
-						optname, optval, optlen);
+                                                level,
+                                                optname, optval, optlen);
 }
 
 int
@@ -588,15 +608,15 @@ libc_recv (int sockfd, void *buf, size_t len, int flags)
 
 int
 libc_recvfrom (int sockfd,
-	       void *buf,
-	       size_t len,
-	       int flags, struct sockaddr *src_addr, socklen_t * addrlen)
+               void *buf,
+               size_t len,
+               int flags, struct sockaddr *src_addr, socklen_t * addrlen)
 {
   swrap_bind_symbol_libc (recvfrom);
 
   return swrap.libc.symbols._libc_recvfrom.f (sockfd,
-					      buf,
-					      len, flags, src_addr, addrlen);
+                                              buf,
+                                              len, flags, src_addr, addrlen);
 }
 
 int
@@ -625,26 +645,26 @@ libc_sendmsg (int sockfd, const struct msghdr *msg, int flags)
 
 int
 libc_sendto (int sockfd,
-	     const void *buf,
-	     size_t len,
-	     int flags, const struct sockaddr *dst_addr, socklen_t addrlen)
+             const void *buf,
+             size_t len,
+             int flags, const struct sockaddr *dst_addr, socklen_t addrlen)
 {
   swrap_bind_symbol_libc (sendto);
 
   return swrap.libc.symbols._libc_sendto.f (sockfd,
-					    buf,
-					    len, flags, dst_addr, addrlen);
+                                            buf,
+                                            len, flags, dst_addr, addrlen);
 }
 
 int
 libc_setsockopt (int sockfd,
-		 int level, int optname, const void *optval, socklen_t optlen)
+                 int level, int optname, const void *optval, socklen_t optlen)
 {
   swrap_bind_symbol_libc (setsockopt);
 
   return swrap.libc.symbols._libc_setsockopt.f (sockfd,
-						level,
-						optname, optval, optlen);
+                                                level,
+                                                optname, optval, optlen);
 }
 
 int
@@ -681,33 +701,76 @@ libc_shutdown (int fd, int how)
 
 int
 libc_select (int __nfds, fd_set * __restrict __readfds,
-	     fd_set * __restrict __writefds,
-	     fd_set * __restrict __exceptfds,
-	     struct timeval *__restrict __timeout)
+             fd_set * __restrict __writefds,
+             fd_set * __restrict __exceptfds,
+             struct timeval *__restrict __timeout)
 {
   swrap_bind_symbol_libc (select);
 
   return swrap.libc.symbols._libc_select.f (__nfds, __readfds,
-					    __writefds,
-					    __exceptfds, __timeout);
+                                            __writefds,
+                                            __exceptfds, __timeout);
 }
 
 #ifdef __USE_XOPEN2K
 int
 libc_pselect (int __nfds, fd_set * __restrict __readfds,
-	      fd_set * __restrict __writefds,
-	      fd_set * __restrict __exceptfds,
-	      const struct timespec *__restrict __timeout,
-	      const __sigset_t * __restrict __sigmask)
+              fd_set * __restrict __writefds,
+              fd_set * __restrict __exceptfds,
+              const struct timespec *__restrict __timeout,
+              const __sigset_t * __restrict __sigmask)
 {
   swrap_bind_symbol_libc (pselect);
 
   return swrap.libc.symbols._libc_pselect.f (__nfds, __readfds,
-					     __writefds,
-					     __exceptfds,
-					     __timeout, __sigmask);
+                                             __writefds,
+                                             __exceptfds,
+                                             __timeout, __sigmask);
 }
 #endif
+
+int libc_epoll_create (int __size)
+{
+  swrap_bind_symbol_libc (epoll_create);
+
+  return swrap.libc.symbols._libc_epoll_create.f (__size);
+}
+
+int libc_epoll_create1 (int __flags)
+{
+  swrap_bind_symbol_libc (epoll_create1);
+
+  return swrap.libc.symbols._libc_epoll_create1.f (__flags);
+}
+
+int libc_epoll_ctl (int __epfd, int __op, int __fd,
+                    struct epoll_event *__event)
+{
+  swrap_bind_symbol_libc (epoll_ctl);
+
+  return swrap.libc.symbols._libc_epoll_ctl.f (__epfd, __op, __fd,
+                                               __event);
+}
+
+int libc_epoll_wait (int __epfd, struct epoll_event *__events,
+                     int __maxevents, int __timeout)
+{
+  swrap_bind_symbol_libc (epoll_wait);
+
+  return swrap.libc.symbols._libc_epoll_wait.f (__epfd, __events,
+                                                __maxevents, __timeout);
+}
+
+int libc_epoll_pwait (int __epfd, struct epoll_event *__events,
+                      int __maxevents, int __timeout,
+                      const __sigset_t *__ss)
+{
+  swrap_bind_symbol_libc (epoll_pwait);
+
+  return swrap.libc.symbols._libc_epoll_pwait.f (__epfd, __events,
+                                                __maxevents, __timeout,
+                                                __ss);
+}
 
 static void
 swrap_thread_prepare (void)
@@ -739,7 +802,7 @@ swrap_constructor (void)
    * This should prevent such deadlocks.
    */
   pthread_atfork (&swrap_thread_prepare,
-		  &swrap_thread_parent, &swrap_thread_child);
+                  &swrap_thread_parent, &swrap_thread_child);
 }
 
 /****************************
