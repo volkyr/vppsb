@@ -578,6 +578,14 @@ libc_read (int fd, void *buf, size_t count)
   return swrap.libc.symbols._libc_read.f (fd, buf, count);
 }
 
+ssize_t
+libc_readv (int fd, const struct iovec *iov, int iovcnt)
+{
+  swrap_bind_symbol_libc (readv);
+
+  return swrap.libc.symbols._libc_readv.f (fd, iov, iovcnt);
+}
+
 int
 libc_recv (int sockfd, void *buf, size_t len, int flags)
 {
@@ -669,6 +677,14 @@ libc_write (int fd, const void *buf, size_t count)
   swrap_bind_symbol_libc (write);
 
   return swrap.libc.symbols._libc_write.f (fd, buf, count);
+}
+
+ssize_t
+libc_writev (int fd, const struct iovec *iov, int iovcnt)
+{
+  swrap_bind_symbol_libc (writev);
+
+  return swrap.libc.symbols._libc_writev.f (fd, iov, iovcnt);
 }
 
 int
