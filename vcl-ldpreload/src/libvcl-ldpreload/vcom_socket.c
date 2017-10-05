@@ -46,6 +46,7 @@ typedef struct vcom_socket_main_t_
   /* Hash table for epollidx to epfd mapping */
   uword *epollidx_by_epfd;
 
+
   /* common epitem poll for all epfd */
   /* TBD: epitem poll per epfd */
   /* vcom_epitem pool */
@@ -53,6 +54,11 @@ typedef struct vcom_socket_main_t_
 
   /* Hash table for epitemidx to epfdfd mapping */
   uword *epollidx_by_epfdfd;
+
+  /* Hash table - key:epfd, value:vec of epitemidx */
+  uword *epitemidxs_by_epfd;
+  /* Hash table - key:fd, value:vec of epitemidx */
+  uword *epitemidxs_by_fd;
 
 } vcom_socket_main_t;
 
@@ -165,6 +171,10 @@ vcom_socket_main_init (void)
       pool_alloc (vsm->vepolls, FD_SETSIZE);
       vsm->epollidx_by_epfd = hash_create (0, sizeof (i32));
 
+      pool_alloc (vsm->vepitems, FD_SETSIZE);
+      vsm->epitemidxs_by_epfd = hash_create (0, sizeof (uword *));
+      vsm->epitemidxs_by_fd = hash_create (0, sizeof (uword *));
+
       vsm->init = 1;
     }
 
@@ -248,6 +258,7 @@ vcom_socket_main_destroy (void)
       pool_free (vsm->vepolls);
       hash_free (vsm->epollidx_by_epfd);
 
+
       vsm->init = 0;
     }
 }
@@ -259,11 +270,11 @@ vcom_socket_main_show (void)
   vcom_socket_t *vsock;
 
   vcom_epoll_t *vepoll;
+  vcom_epitem_t *vepitem;
 
   if (vsm->init)
     {
-      /* from active list of vsockets,
-       * close socket and vppcom session */
+      /* from active list of vsockets show vsock */
 
       /* *INDENT-OFF* */
       pool_foreach (vsock, vsm->vsockets,
@@ -275,8 +286,7 @@ vcom_socket_main_show (void)
         }));
       /* *INDENT-ON* */
 
-      /* from active list of vepolls,
-       * close epoll and vppcom session */
+      /* from active list of vepolls, show vepoll */
 
       /* *INDENT-OFF* */
       pool_foreach (vepoll, vsm->vepolls,
@@ -288,6 +298,23 @@ vcom_socket_main_show (void)
                  vepoll->epfd, vepoll->vep_idx,
                  vcom_socket_epoll_type_str (vepoll->type),
                  vepoll->flags, vepoll->count, vepoll->close);
+        }));
+      /* *INDENT-ON* */
+
+      /* from active list of vepitems, show vepitem */
+
+      /* *INDENT-OFF* */
+      pool_foreach (vepitem, vsm->vepitems,
+        ({
+          printf(
+                 "epfd='%04d', fd='%04d', "
+                 "next_fd='%04d', prev_fd='%04d', "
+                 "type='%-30s', "
+                 "events='%04x', revents='%04x'\n",
+                 vepitem->epfd, vepitem->fd,
+                 vepitem->next_fd, vepitem->prev_fd,
+                 vcom_socket_vcom_fd_type_str (vepitem->type),
+                 vepitem->event.events, vepitem->revent.events);
         }));
       /* *INDENT-ON* */
     }
@@ -2246,6 +2273,7 @@ vcom_socket_epoll_create1 (int __flags)
 
   vepoll_set (vepoll, epfd, vep_idx,
               EPOLL_TYPE_VPPCOM_BOUND, __flags, 0, 0);
+
   return epfd;
 
 out_close_epoll:

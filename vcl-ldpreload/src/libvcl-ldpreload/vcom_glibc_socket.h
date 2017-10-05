@@ -291,8 +291,8 @@ extern int __THROW
 epoll_ctl (int __epfd, int __op, int __fd,
            struct epoll_event *__event);
 
-#define INT_MAX ((int)(~0U>>1))
-#define EP_MAX_EVENTS (INT_MAX / sizeof(struct epoll_event))
+#define EP_INT_MAX ((int)(~0U>>1))
+#define EP_MAX_EVENTS (EP_INT_MAX / sizeof(struct epoll_event))
 
 /* Wait for events on an epoll instance "epfd". Returns the number of
    triggered events returned in "events" buffer. Or -1 in case of

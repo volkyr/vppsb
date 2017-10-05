@@ -2705,6 +2705,12 @@ epoll_create1 (int __flags)
   return rv;
 }
 
+static inline int
+ep_op_has_event (int op)
+{
+  return op != EPOLL_CTL_DEL;
+}
+
 int
 vcom_epoll_ctl (int __epfd, int __op, int __fd,
                 struct epoll_event *__event)
@@ -2714,17 +2720,37 @@ vcom_epoll_ctl (int __epfd, int __op, int __fd,
       return -1;
     }
 
+  /*
+   * the requested operation __op is not supported
+   * by this interface */
+  if (!((__op == EPOLL_CTL_ADD) ||
+      (__op == EPOLL_CTL_MOD) ||
+      (__op == EPOLL_CTL_DEL)))
+    {
+      return -EINVAL;
+    }
+
+  /* op is ADD or MOD but event parameter is NULL */
+  if ((ep_op_has_event (__op) && !__event))
+    {
+      return -EFAULT;
+    }
+
+  /* fd is same as epfd */
+  if (__epfd == __fd)
+    {
+      return -EINVAL;
+    }
   /* implementation */
   return vcom_socket_epoll_ctl (__epfd, __op, __fd,
                                 __event);
 }
 
-static inline int
-ep_op_has_event (int op)
-{
-  return op != EPOLL_CTL_DEL;
-}
-
+/*
+ * implement the controller interface for epoll
+ * that enables the insertion/removal/change of
+ * file descriptors inside the interest set.
+ */
 int
 epoll_ctl (int __epfd, int __op, int __fd,
            struct epoll_event *__event)
@@ -2732,11 +2758,6 @@ epoll_ctl (int __epfd, int __op, int __fd,
   int rv;
   pid_t pid = getpid ();
 
-  if ((ep_op_has_event (__op) && !__event))
-    {
-      errno = EFAULT;
-      return -1;
-    }
   if (is_vcom_epfd (__epfd))
     {
       /* TBD: currently limiting epoll to support only vcom fds */
@@ -2757,13 +2778,16 @@ epoll_ctl (int __epfd, int __op, int __fd,
         }
       else
         {
-          /* TBD: currently epoll does not support kernel fds */
+          /*
+           * TBD: currently epoll does not support kernel fds
+           * or epoll fds */
           errno = EBADF;
           return -1;
         }
     }
   else
     {
+      /* epfd is not an epoll file descriptor */
       errno = EINVAL;
       return -1;
     }
