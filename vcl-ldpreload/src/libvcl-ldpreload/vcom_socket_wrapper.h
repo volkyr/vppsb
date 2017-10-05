@@ -143,6 +143,8 @@ int libc_listen (int sockfd, int backlog);
 
 int libc_read (int fd, void *buf, size_t count);
 
+ssize_t libc_readv (int fd, const struct iovec *iov, int iovcnt);
+
 int libc_recv (int sockfd, void *buf, size_t len, int flags);
 
 int
@@ -173,6 +175,8 @@ int libc_socket (int domain, int type, int protocol);
 int libc_socketpair (int domain, int type, int protocol, int sv[2]);
 
 ssize_t libc_write (int fd, const void *buf, size_t count);
+
+ssize_t libc_writev (int fd, const struct iovec *iov, int iovcnt);
 
 int libc_shutdown (int fd, int how);
 

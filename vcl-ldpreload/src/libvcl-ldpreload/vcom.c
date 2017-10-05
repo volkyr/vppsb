@@ -18,7 +18,10 @@
 #include <dlfcn.h>
 #include <pthread.h>
 #include <time.h>
-
+#include <sys/uio.h>
+#include <limits.h>
+#define __need_IOV_MAX
+#include <bits/stdio_lim.h>
 #include <stdarg.h>
 
 #include <libvcl-ldpreload/vcom_socket_wrapper.h>
@@ -27,8 +30,6 @@
 
 #include <uri/vppcom.h>
 #include <libvcl-ldpreload/vcom_socket.h>
-
-
 
 /* GCC have printf type attribute check. */
 #ifdef HAVE_FUNCTION_ATTRIBUTE_FORMAT
@@ -61,11 +62,6 @@
 #else
 #define DO_NOT_SANITIZE_ADDRESS_ATTRIBUTE
 #endif
-
-
-
-
-
 
 #define VCOM_SOCKET_FD_MAX  0x10000
 
@@ -267,6 +263,47 @@ read (int __fd, void *__buf, size_t __nbytes)
   return libc_read (__fd, __buf, __nbytes);
 }
 
+ssize_t
+readv (int __fd, const struct iovec * __iov, int __iovcnt)
+{
+  size_t len = 0;
+  ssize_t total = 0;
+
+  if (is_vcom_socket_fd (__fd))
+    {
+      if (__iov == 0 || __iovcnt == 0 || __iovcnt > IOV_MAX)
+	return -EINVAL;
+
+      /* Sanity check */
+      for (int i = 0; i < __iovcnt; ++i)
+	{
+	  if (SSIZE_MAX - len < __iov[i].iov_len)
+	    return -EINVAL;
+	  len += __iov[i].iov_len;
+	}
+
+      for (int i = 0; i < __iovcnt; ++i)
+	{
+	  len = vcom_read (__fd, __iov[i].iov_base, __iov[i].iov_len);
+	  if (len < 0)
+	    {
+	      if (total > 0)
+		return total;
+	      else
+		{
+		  errno = len;;
+		  return -1;
+		}
+	    }
+	  else
+	    total += len;
+	}
+      return (total);
+    }
+  else
+    return libc_readv (__fd, __iov, __iovcnt);
+}
+
 /* Write N bytes of BUF to FD.  Return the number written, or -1.
 
    This function is a cancellation point and therefore
@@ -312,6 +349,47 @@ write (int __fd, const void *__buf, size_t __n)
       return size;
     }
   return libc_write (__fd, __buf, __n);
+}
+
+ssize_t
+writev (int __fd, const struct iovec * __iov, int __iovcnt)
+{
+  size_t len = 0;
+  ssize_t total = 0;
+
+  if (is_vcom_socket_fd (__fd))
+    {
+      if (__iov == 0 || __iovcnt == 0 || __iovcnt > IOV_MAX)
+	return -EINVAL;
+
+      /* Sanity check */
+      for (int i = 0; i < __iovcnt; ++i)
+	{
+	  if (SSIZE_MAX - len < __iov[i].iov_len)
+	    return -EINVAL;
+	  len += __iov[i].iov_len;
+	}
+
+      for (int i = 0; i < __iovcnt; ++i)
+	{
+	  len = vcom_write (__fd, __iov[i].iov_base, __iov[i].iov_len);
+	  if (len < 0)
+	    {
+	      if (total > 0)
+		return total;
+	      else
+		{
+		  errno = len;;
+		  return -1;
+		}
+	    }
+	  else
+	    total += len;
+	}
+      return (total);
+    }
+  else
+    return libc_writev (__fd, __iov, __iovcnt);
 }
 
 /* Do the file control operation described by CMD on FD.
