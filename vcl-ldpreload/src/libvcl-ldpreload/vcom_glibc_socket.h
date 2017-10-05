@@ -22,6 +22,7 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 
+#include <sys/epoll.h>
 /*
  *
  * Generic glibc fd api
@@ -78,9 +79,9 @@ extern int fcntl (int __fd, int __cmd, ...);
    __THROW.  */
 extern int
 select (int __nfds, fd_set * __restrict __readfds,
-	fd_set * __restrict __writefds,
-	fd_set * __restrict __exceptfds,
-	struct timeval *__restrict __timeout);
+        fd_set * __restrict __writefds,
+        fd_set * __restrict __exceptfds,
+        struct timeval *__restrict __timeout);
 
 #ifdef __USE_XOPEN2K
 /* Same as above only that the TIMEOUT value is given with higher
@@ -91,10 +92,10 @@ select (int __nfds, fd_set * __restrict __readfds,
    __THROW.  */
 extern int
 pselect (int __nfds, fd_set * __restrict __readfds,
-	 fd_set * __restrict __writefds,
-	 fd_set * __restrict __exceptfds,
-	 const struct timespec *__restrict __timeout,
-	 const __sigset_t * __restrict __sigmask);
+         fd_set * __restrict __writefds,
+         fd_set * __restrict __exceptfds,
+         const struct timespec *__restrict __timeout,
+         const __sigset_t * __restrict __sigmask);
 #endif
 
 
@@ -162,7 +163,7 @@ extern ssize_t recv (int __fd, void *__buf, size_t __n, int __flags);
    __THROW.  */
 extern ssize_t
 sendto (int __fd, const void *__buf, size_t __n,
-	int __flags, __CONST_SOCKADDR_ARG __addr, socklen_t __addr_len);
+        int __flags, __CONST_SOCKADDR_ARG __addr, socklen_t __addr_len);
 
 /* Read N bytes into BUF through socket FD.
    If ADDR is not NULL, fill in *ADDR_LEN bytes of it with tha address of
@@ -173,8 +174,8 @@ sendto (int __fd, const void *__buf, size_t __n,
    __THROW.  */
 extern ssize_t
 recvfrom (int __fd, void *__restrict __buf,
-	  size_t __n, int __flags,
-	  __SOCKADDR_ARG __addr, socklen_t * __restrict __addr_len);
+          size_t __n, int __flags,
+          __SOCKADDR_ARG __addr, socklen_t * __restrict __addr_len);
 
 /* Send a message described MESSAGE on socket FD.
    Returns the number of bytes sent, or -1 for errors.
@@ -192,7 +193,7 @@ sendmsg (int __fd, const struct msghdr *__message, int __flags);
    __THROW.  */
 extern int
 sendmmsg (int __fd, struct mmsghdr *__vmessages,
-	  unsigned int __vlen, int __flags);
+          unsigned int __vlen, int __flags);
 #endif
 
 /* Receive a message as described by MESSAGE from socket FD.
@@ -210,7 +211,7 @@ extern ssize_t recvmsg (int __fd, struct msghdr *__message, int __flags);
    __THROW.  */
 extern int
 recvmmsg (int __fd, struct mmsghdr *__vmessages,
-	  unsigned int __vlen, int __flags, struct timespec *__tmo);
+          unsigned int __vlen, int __flags, struct timespec *__tmo);
 #endif
 
 
@@ -219,14 +220,14 @@ recvmmsg (int __fd, struct mmsghdr *__vmessages,
    actual length.  Returns 0 on success, -1 for errors.  */
 extern int __THROW
 getsockopt (int __fd, int __level, int __optname,
-	    void *__restrict __optval, socklen_t * __restrict __optlen);
+            void *__restrict __optval, socklen_t * __restrict __optlen);
 
 /* Set socket FD's option OPTNAME at protocol level LEVEL
    to *OPTVAL (which is OPTLEN bytes long).
    Returns 0 on success, -1 for errors.  */
 extern int __THROW
 setsockopt (int __fd, int __level, int __optname,
-	    const void *__optval, socklen_t __optlen);
+            const void *__optval, socklen_t __optlen);
 
 /* Prepare to accept connections on socket FD.
    N connection requests will be queued before further requests are refused.
@@ -252,7 +253,7 @@ accept (int __fd, __SOCKADDR_ARG __addr, socklen_t * __restrict __addr_len);
      /* TBD: implemented later */
 extern int
 accept4 (int __fd, __SOCKADDR_ARG __addr,
-	 socklen_t * __restrict __addr_len, int __flags);
+         socklen_t * __restrict __addr_len, int __flags);
 #endif
 
 /* Shut down all or part of the connection open on socket FD.
@@ -262,6 +263,60 @@ accept4 (int __fd, __SOCKADDR_ARG __addr,
      SHUT_RDWR = No more receptions or transmissions.
    Returns 0 on success, -1 for errors.  */
 extern int __THROW shutdown (int __fd, int __how);
+
+
+/*
+ * glibc APIs from <sys/epoll.h>
+ */
+
+/* Creates an epoll instance.  Returns an fd for the new instance.
+   The "size" parameter is a hint specifying the number of file
+   descriptors to be associated with the new instance.  The fd
+   returned by epoll_create() should be closed with close().  */
+extern int __THROW
+epoll_create (int __size);
+
+/* Same as epoll_create but with an FLAGS parameter.  The unused SIZE
+   parameter has been dropped.  */
+extern int __THROW
+epoll_create1 (int __flags);
+
+/* Manipulate an epoll instance "epfd". Returns 0 in case of success,
+   -1 in case of error ( the "errno" variable will contain the
+   specific error code ) The "op" parameter is one of the EPOLL_CTL_*
+   constants defined above. The "fd" parameter is the target of the
+   operation. The "event" parameter describes which events the caller
+   is interested in and any associated user data.  */
+extern int __THROW
+epoll_ctl (int __epfd, int __op, int __fd,
+           struct epoll_event *__event);
+
+#define INT_MAX ((int)(~0U>>1))
+#define EP_MAX_EVENTS (INT_MAX / sizeof(struct epoll_event))
+
+/* Wait for events on an epoll instance "epfd". Returns the number of
+   triggered events returned in "events" buffer. Or -1 in case of
+   error with the "errno" variable set to the specific error code. The
+   "events" parameter is a buffer that will contain triggered
+   events. The "maxevents" is the maximum number of events to be
+   returned ( usually size of "events" ). The "timeout" parameter
+   specifies the maximum wait time in milliseconds (-1 == infinite).
+
+   This function is a cancellation point and therefore not marked with
+   __THROW.  */
+extern int
+epoll_wait (int __epfd, struct epoll_event *__events,
+            int __maxevents, int __timeout);
+
+/* Same as epoll_wait, but the thread's signal mask is temporarily
+   and atomically replaced with the one provided as parameter.
+
+   This function is a cancellation point and therefore not marked with
+   __THROW.  */
+extern int
+epoll_pwait (int __epfd, struct epoll_event *__events,
+             int __maxevents, int __timeout,
+             const __sigset_t *__ss);
 
 #endif /* included_vcom_glibc_socket_h */
 
