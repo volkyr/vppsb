@@ -14,6 +14,10 @@
  */
 #include <unistd.h>
 #include <stdio.h>
+#include <sys/uio.h>
+#include <limits.h>
+#define __need_IOV_MAX
+#include <bits/stdio_lim.h>
 
 #include <vppinfra/types.h>
 #include <vppinfra/hash.h>
@@ -542,6 +546,93 @@ vcom_socket_read (int __fd, void *__buf, size_t __nbytes)
 }
 
 ssize_t
+vcom_socket_readv (int __fd, const struct iovec * __iov, int __iovcnt)
+{
+  int rv;
+  vcom_socket_main_t *vsm = &vcom_socket_main;
+  uword *p;
+  vcom_socket_t *vsock;
+  ssize_t total = 0, len = 0;
+
+  p = hash_get (vsm->sockidx_by_fd, __fd);
+  if (!p)
+    return -EBADF;
+
+  vsock = pool_elt_at_index (vsm->vsockets, p[0]);
+  if (!vsock)
+    return -ENOTSOCK;
+
+  if (vsock->type != SOCKET_TYPE_VPPCOM_BOUND)
+    return -EINVAL;
+
+  if (__iov == 0 || __iovcnt == 0 || __iovcnt > IOV_MAX)
+    return -EINVAL;
+
+  /* Sanity check */
+  for (int i = 0; i < __iovcnt; ++i)
+    {
+      if (SSIZE_MAX - len < __iov[i].iov_len)
+	return -EINVAL;
+      len += __iov[i].iov_len;
+    }
+
+  rv = vcom_fcntl (__fd, F_GETFL, 0);
+  if (rv < 0)
+    {
+      return rv;
+    }
+
+  /* is blocking */
+  if (!(rv & O_NONBLOCK))
+    {
+      do
+	{
+	  for (int i = 0; i < __iovcnt; ++i)
+	    {
+	      rv = vppcom_session_read (vsock->sid, __iov[i].iov_base,
+					__iov[i].iov_len);
+	      if (rv < 0)
+		break;
+	      else
+		{
+		  total += rv;
+		  if (rv < __iov[i].iov_len)
+	            /* Read less than buffer provided, no point to continue */
+		    break;
+		}
+	    }
+	}
+      while ((rv == -EAGAIN || rv == -EWOULDBLOCK) && total == 0);
+      return total;
+    }
+
+  /* is non blocking */
+  for (int i = 0; i < __iovcnt; ++i)
+    {
+      rv = vppcom_session_read (vsock->sid, __iov[i].iov_base,
+				__iov[i].iov_len);
+      if (rv < 0)
+	{
+	  if (total > 0)
+	    break;
+	  else
+	    {
+	      errno = rv;
+	      return rv;
+	    }
+	}
+      else
+	{
+	  total += rv;
+	  if (rv < __iov[i].iov_len)
+	    /* Read less than buffer provided, no point to continue */
+	    break;
+	}
+    }
+  return total;
+}
+
+ssize_t
 vcom_socket_write (int __fd, const void *__buf, size_t __n)
 {
   int rv = -1;
@@ -567,6 +658,46 @@ vcom_socket_write (int __fd, const void *__buf, size_t __n)
 
   rv = vppcom_session_write (vsock->sid, (void *) __buf, __n);
   return rv;
+}
+
+ssize_t
+vcom_socket_writev (int __fd, const struct iovec * __iov, int __iovcnt)
+{
+  int rv = -1;
+  ssize_t total = 0;
+  vcom_socket_main_t *vsm = &vcom_socket_main;
+  uword *p;
+  vcom_socket_t *vsock;
+
+  p = hash_get (vsm->sockidx_by_fd, __fd);
+  if (!p)
+    return -EBADF;
+
+  vsock = pool_elt_at_index (vsm->vsockets, p[0]);
+  if (!vsock)
+    return -ENOTSOCK;
+
+  if (vsock->type != SOCKET_TYPE_VPPCOM_BOUND)
+    return -EINVAL;
+
+  if (__iov == 0 || __iovcnt == 0 || __iovcnt > IOV_MAX)
+    return -EINVAL;
+
+  for (int i = 0; i < __iovcnt; ++i)
+    {
+      rv = vppcom_session_write (vsock->sid, __iov[i].iov_base,
+				 __iov[i].iov_len);
+      if (rv < 0)
+	{
+	  if (total > 0)
+	    break;
+	  else
+	    return rv;
+	}
+      else
+	total += rv;
+    }
+  return total;
 }
 
 /*

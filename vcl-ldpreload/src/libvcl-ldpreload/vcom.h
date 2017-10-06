@@ -44,6 +44,10 @@ extern ssize_t __wur vcom_read (int __fd, void *__buf, size_t __nbytes);
 
 extern ssize_t __wur vcom_write (int __fd, const void *__buf, size_t __n);
 
+extern ssize_t __wur vcom_readv (int __fd, const struct iovec * __iov, int __iovcnt);
+
+extern ssize_t __wur vcom_writev (int __fd, const struct iovec * __iov, int __iovcnt);
+
 /*
  * vpp implementation of glibc APIs from <fcntl.h>
  */

@@ -314,7 +314,11 @@ int vcom_socket_close (int __fd);
 
 ssize_t vcom_socket_read (int __fd, void *__buf, size_t __nbytes);
 
+ssize_t vcom_socket_readv (int __fd, const struct iovec * __iov, int __iovcnt);
+
 ssize_t vcom_socket_write (int __fd, const void *__buf, size_t __n);
+
+ssize_t vcom_socket_writev (int __fd, const struct iovec * __iov, int __iovcnt);
 
 int vcom_socket_fcntl_va (int __fd, int __cmd, va_list __ap);
 

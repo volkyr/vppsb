@@ -18,10 +18,6 @@
 #include <dlfcn.h>
 #include <pthread.h>
 #include <time.h>
-#include <sys/uio.h>
-#include <limits.h>
-#define __need_IOV_MAX
-#include <bits/stdio_lim.h>
 #include <stdarg.h>
 
 #include <libvcl-ldpreload/vcom_socket_wrapper.h>
@@ -264,41 +260,30 @@ read (int __fd, void *__buf, size_t __nbytes)
 }
 
 ssize_t
+vcom_readv (int __fd, const struct iovec * __iov, int __iovcnt)
+{
+  if (vcom_init () != 0)
+    {
+      return -1;
+    }
+
+  return vcom_socket_readv (__fd, __iov, __iovcnt);
+}
+
+ssize_t
 readv (int __fd, const struct iovec * __iov, int __iovcnt)
 {
-  size_t len = 0;
-  ssize_t total = 0;
+  ssize_t size = 0;
 
   if (is_vcom_socket_fd (__fd))
     {
-      if (__iov == 0 || __iovcnt == 0 || __iovcnt > IOV_MAX)
-	return -EINVAL;
-
-      /* Sanity check */
-      for (int i = 0; i < __iovcnt; ++i)
+      size = vcom_readv (__fd, __iov, __iovcnt);
+      if (size < 0)
 	{
-	  if (SSIZE_MAX - len < __iov[i].iov_len)
-	    return -EINVAL;
-	  len += __iov[i].iov_len;
+	  errno = -size;
+	  return -1;
 	}
-
-      for (int i = 0; i < __iovcnt; ++i)
-	{
-	  len = vcom_read (__fd, __iov[i].iov_base, __iov[i].iov_len);
-	  if (len < 0)
-	    {
-	      if (total > 0)
-		return total;
-	      else
-		{
-		  errno = len;;
-		  return -1;
-		}
-	    }
-	  else
-	    total += len;
-	}
-      return (total);
+      return size;
     }
   else
     return libc_readv (__fd, __iov, __iovcnt);
@@ -352,41 +337,30 @@ write (int __fd, const void *__buf, size_t __n)
 }
 
 ssize_t
+vcom_writev (int __fd, const struct iovec * __iov, int __iovcnt)
+{
+  if (vcom_init () != 0)
+    {
+      return -1;
+    }
+
+  return vcom_socket_writev (__fd, __iov, __iovcnt);
+}
+
+ssize_t
 writev (int __fd, const struct iovec * __iov, int __iovcnt)
 {
-  size_t len = 0;
-  ssize_t total = 0;
+  ssize_t size = 0;
 
   if (is_vcom_socket_fd (__fd))
     {
-      if (__iov == 0 || __iovcnt == 0 || __iovcnt > IOV_MAX)
-	return -EINVAL;
-
-      /* Sanity check */
-      for (int i = 0; i < __iovcnt; ++i)
+      size = vcom_writev (__fd, __iov, __iovcnt);
+      if (size < 0)
 	{
-	  if (SSIZE_MAX - len < __iov[i].iov_len)
-	    return -EINVAL;
-	  len += __iov[i].iov_len;
+	  errno = -size;
+	  return -1;
 	}
-
-      for (int i = 0; i < __iovcnt; ++i)
-	{
-	  len = vcom_write (__fd, __iov[i].iov_base, __iov[i].iov_len);
-	  if (len < 0)
-	    {
-	      if (total > 0)
-		return total;
-	      else
-		{
-		  errno = len;;
-		  return -1;
-		}
-	    }
-	  else
-	    total += len;
-	}
-      return (total);
+      return size;
     }
   else
     return libc_writev (__fd, __iov, __iovcnt);
