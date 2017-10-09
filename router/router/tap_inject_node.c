@@ -237,7 +237,7 @@ tap_rx (vlib_main_t * vm, vlib_node_runtime_t * node, vlib_frame_t * f, int fd)
 
   b = vlib_get_buffer (vm, bi[0]);
 
-  vnet_buffer (b)->sw_if_index[VLIB_RX] = ~0;
+  vnet_buffer (b)->sw_if_index[VLIB_RX] = sw_if_index;
   vnet_buffer (b)->sw_if_index[VLIB_TX] = sw_if_index;
 
   n_bytes_left = n_bytes - VLIB_BUFFER_DATA_SIZE;
