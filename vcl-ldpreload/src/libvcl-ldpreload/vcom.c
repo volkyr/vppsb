@@ -2631,8 +2631,14 @@ int
 epoll_create (int __size)
 {
   int rv = 0;
+  pid_t pid = getpid ();
 
   rv = vcom_epoll_create(__size);
+  if (VCOM_DEBUG > 0)
+    fprintf (stderr,
+             "[%d] epoll_create: "
+             "'%04d'='%04d'\n",
+             pid, rv, __size);
   if (rv < 0)
     {
       errno = -rv;
@@ -2669,8 +2675,14 @@ int
 epoll_create1 (int __flags)
 {
   int rv = 0;
+  pid_t pid = getpid ();
 
   rv = vcom_epoll_create1(__flags);
+  if (VCOM_DEBUG > 0)
+    fprintf (stderr,
+             "[%d] epoll_create: "
+             "'%04d'='%08x'\n",
+             pid, rv, __flags);
   if (rv < 0)
     {
       errno = -rv;
@@ -2711,10 +2723,12 @@ vcom_epoll_ctl (int __epfd, int __op, int __fd,
     }
 
   /* fd is same as epfd */
+  /* do not permit adding an epoll file descriptor inside itself */
   if (__epfd == __fd)
     {
       return -EINVAL;
     }
+
   /* implementation */
   return vcom_socket_epoll_ctl (__epfd, __op, __fd,
                                 __event);
@@ -2742,7 +2756,8 @@ epoll_ctl (int __epfd, int __op, int __fd,
           if (VCOM_DEBUG > 0)
             fprintf (stderr,
                      "[%d] epoll_ctl: "
-                     "'%04d'='%04d', '%04d', '%04d'\n", pid, rv, __epfd, __op, __fd);
+                     "'%04d'='%04d', '%04d', '%04d'\n",
+                     pid, rv, __epfd, __op, __fd);
           if (rv != 0)
             {
               errno = -rv;

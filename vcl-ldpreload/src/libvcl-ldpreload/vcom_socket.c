@@ -57,7 +57,7 @@ typedef struct vcom_socket_main_t_
   vcom_epitem_t *vepitems;
 
   /* Hash table for epitemidx to epfdfd mapping */
-  uword *epollidx_by_epfdfd;
+  uword *epitemidx_by_epfdfd;
 
   /* Hash table - key:epfd, value:vec of epitemidx */
   uword *epitemidxs_by_epfd;
@@ -158,171 +158,6 @@ vcom_socket_close_epoll (int epfd)
  * Public API functions
  */
 
-int
-vcom_socket_main_init (void)
-{
-  vcom_socket_main_t *vsm = &vcom_socket_main;
-
-  if (VCOM_DEBUG > 0)
-    printf ("vcom_socket_main_init\n");
-
-  if (!vsm->init)
-    {
-      /* TBD: define FD_MAXSIZE and use it here */
-      pool_alloc (vsm->vsockets, FD_SETSIZE);
-      vsm->sockidx_by_fd = hash_create (0, sizeof (i32));
-
-      pool_alloc (vsm->vepolls, FD_SETSIZE);
-      vsm->epollidx_by_epfd = hash_create (0, sizeof (i32));
-
-      pool_alloc (vsm->vepitems, FD_SETSIZE);
-      vsm->epitemidxs_by_epfd = hash_create (0, sizeof (uword *));
-      vsm->epitemidxs_by_fd = hash_create (0, sizeof (uword *));
-
-      vsm->init = 1;
-    }
-
-  return 0;
-}
-
-void
-vcom_socket_main_destroy (void)
-{
-  vcom_socket_main_t *vsm = &vcom_socket_main;
-  vcom_socket_t *vsock;
-
-  vcom_epoll_t *vepoll;
-
-  if (VCOM_DEBUG > 0)
-    printf ("vcom_socket_main_destroy\n");
-
-  if (vsm->init)
-    {
-      /*
-       * from active list of vsockets,
-       * close socket and vppcom session
-       * */
-
-      /* *INDENT-OFF* */
-      pool_foreach (vsock, vsm->vsockets,
-        ({
-          if (vsock->type == SOCKET_TYPE_VPPCOM_BOUND)
-            {
-              vppcom_session_close (vsock->sid);
-              vcom_socket_close_socket (vsock->fd);
-              vsocket_init (vsock);
-            }
-        }));
-      /* *INDENT-ON* */
-
-      /*
-       * return vsocket element to the pool
-       * */
-
-      /* *INDENT-OFF* */
-      pool_flush (vsock, vsm->vsockets,
-        ({
-          // vsocket_init(vsock);
-          ;
-        }));
-      /* *INDENT-ON* */
-
-      pool_free (vsm->vsockets);
-      hash_free (vsm->sockidx_by_fd);
-
-      /*
-       * from active list of vepolls,
-       * close epoll and vppcom_epoll
-       * */
-
-      /* *INDENT-OFF* */
-      pool_foreach (vepoll, vsm->vepolls,
-        ({
-          if (vepoll->type == EPOLL_TYPE_VPPCOM_BOUND)
-            {
-              vppcom_session_close (vepoll->vep_idx);
-              vcom_socket_close_epoll (vepoll->epfd); /* TBD: */
-              vepoll_init (vepoll);
-            }
-        }));
-      /* *INDENT-ON* */
-
-      /*
-       * return vepoll element to the pool
-       * */
-
-      /* *INDENT-OFF* */
-      pool_flush (vepoll, vsm->vepolls,
-        ({
-          // vepoll_init(vepoll);
-          ;
-        }));
-      /* *INDENT-ON* */
-
-      pool_free (vsm->vepolls);
-      hash_free (vsm->epollidx_by_epfd);
-
-
-      vsm->init = 0;
-    }
-}
-
-void
-vcom_socket_main_show (void)
-{
-  vcom_socket_main_t *vsm = &vcom_socket_main;
-  vcom_socket_t *vsock;
-
-  vcom_epoll_t *vepoll;
-  vcom_epitem_t *vepitem;
-
-  if (vsm->init)
-    {
-      /* from active list of vsockets show vsock */
-
-      /* *INDENT-OFF* */
-      pool_foreach (vsock, vsm->vsockets,
-        ({
-          printf(
-                 "fd='%04d', sid='%08x',type='%-30s'\n",
-                 vsock->fd, vsock->sid,
-                 vcom_socket_type_str (vsock->type));
-        }));
-      /* *INDENT-ON* */
-
-      /* from active list of vepolls, show vepoll */
-
-      /* *INDENT-OFF* */
-      pool_foreach (vepoll, vsm->vepolls,
-        ({
-          printf(
-                 "epfd='%04d', vep_idx='%08x', "
-                 "type='%-30s', "
-                 "flags='%d', count='%d', close='%d'\n",
-                 vepoll->epfd, vepoll->vep_idx,
-                 vcom_socket_epoll_type_str (vepoll->type),
-                 vepoll->flags, vepoll->count, vepoll->close);
-        }));
-      /* *INDENT-ON* */
-
-      /* from active list of vepitems, show vepitem */
-
-      /* *INDENT-OFF* */
-      pool_foreach (vepitem, vsm->vepitems,
-        ({
-          printf(
-                 "epfd='%04d', fd='%04d', "
-                 "next_fd='%04d', prev_fd='%04d', "
-                 "type='%-30s', "
-                 "events='%04x', revents='%04x'\n",
-                 vepitem->epfd, vepitem->fd,
-                 vepitem->next_fd, vepitem->prev_fd,
-                 vcom_socket_vcom_fd_type_str (vepitem->type),
-                 vepitem->event.events, vepitem->revent.events);
-        }));
-      /* *INDENT-ON* */
-    }
-}
 
 int
 vcom_socket_is_vcom_fd (int fd)
@@ -396,42 +231,50 @@ vcom_socket_get_vep_idx (int epfd)
   return INVALID_VEP_IDX;
 }
 
-static int
-vcom_socket_close_vsock (int fd)
+static inline int
+vcom_socket_get_sid_and_vsock (int fd, vcom_socket_t **vsockp)
 {
-  int rv = -1;
   vcom_socket_main_t *vsm = &vcom_socket_main;
   uword *p;
   vcom_socket_t *vsock;
 
   p = hash_get (vsm->sockidx_by_fd, fd);
-  if (!p)
-    return -EBADF;
 
-  vsock = pool_elt_at_index (vsm->vsockets, p[0]);
-  if (!vsock)
-    return -ENOTSOCK;
-
-  if (vsock->type != SOCKET_TYPE_VPPCOM_BOUND)
-    return -EINVAL;
-
-  rv = vppcom_session_close (vsock->sid);
-  rv = vcom_socket_close_socket (vsock->fd);
-
-  vsocket_init (vsock);
-  hash_unset (vsm->sockidx_by_fd, fd);
-  pool_put (vsm->vsockets, vsock);
-
-  /*
-   * TBD:
-   * close all epoll instances that are marked as "close"
-   * of which this fd is the last remaining member
-   * */
-
-  return rv;
+  if (p)
+    {
+      vsock = pool_elt_at_index (vsm->vsockets, p[0]);
+      if (vsock && vsock->type == SOCKET_TYPE_VPPCOM_BOUND)
+        {
+          *vsockp = vsock;
+          return vsock->sid;
+        }
+    }
+  return INVALID_SESSION_ID;
 }
 
-int
+static inline int
+vcom_socket_get_vep_idx_and_vepoll (int epfd, vcom_epoll_t **vepollp)
+{
+  vcom_socket_main_t *vsm = &vcom_socket_main;
+  uword *p;
+  vcom_epoll_t *vepoll;
+
+  p = hash_get (vsm->epollidx_by_epfd, epfd);
+
+  if (p)
+    {
+      vepoll = pool_elt_at_index (vsm->vepolls, p[0]);
+      if (vepoll && vepoll->type == EPOLL_TYPE_VPPCOM_BOUND)
+        {
+          *vepollp = vepoll;
+          return vepoll->vep_idx;
+        }
+    }
+  return INVALID_VEP_IDX;
+}
+
+
+static int
 vcom_socket_close_vepoll (int epfd)
 {
   int rv = -1;
@@ -470,6 +313,92 @@ vcom_socket_close_vepoll (int epfd)
   vepoll_init (vepoll);
   hash_unset (vsm->epollidx_by_epfd, epfd);
   pool_put (vsm->vepolls, vepoll);
+
+  return rv;
+}
+
+static int
+vcom_socket_close_vsock (int fd)
+{
+  int rv = -1;
+  vcom_socket_main_t *vsm = &vcom_socket_main;
+  uword *p;
+  vcom_socket_t *vsock;
+
+  vcom_epitem_t *vepitem;
+
+  i32 *vepitemidxs = 0;
+  i32 *vepitemidxs_var = 0;
+
+  p = hash_get (vsm->sockidx_by_fd, fd);
+  if (!p)
+    return -EBADF;
+
+  vsock = pool_elt_at_index (vsm->vsockets, p[0]);
+  if (!vsock)
+    return -ENOTSOCK;
+
+  if (vsock->type != SOCKET_TYPE_VPPCOM_BOUND)
+    return -EINVAL;
+
+  rv = vppcom_session_close (vsock->sid);
+  rv = vcom_socket_close_socket (vsock->fd);
+
+  vsocket_init (vsock);
+  hash_unset (vsm->sockidx_by_fd, fd);
+  pool_put (vsm->vsockets, vsock);
+
+  /*
+   * NOTE:
+   * Before calling close(), user should remove
+   * this fd from the epoll-set of all epoll instances,
+   * otherwise resource(epitems) leaks ensues.
+   */
+
+  /*
+   * 00. close all epoll instances that are marked as "close"
+   *     of which this fd is the "last" remaining member.
+   * 01. epitems associated with this fd are intentionally
+   *     not removed, see NOTE: above.
+   * */
+
+  /* does this fd participate in epoll */
+  p = hash_get (vsm->epitemidxs_by_fd, fd);
+  if (p)
+    {
+      vepitemidxs = *(i32 **)p;
+      vec_foreach (vepitemidxs_var, vepitemidxs)
+      {
+        vepitem = pool_elt_at_index (vsm->vepitems, vepitemidxs_var[0]);
+        if (vepitem && vepitem->fd == fd &&
+            vepitem->type == FD_TYPE_VCOM_SOCKET)
+          {
+            i32 vep_idx;
+            vcom_epoll_t *vepoll;
+            if ((vep_idx =
+                 vcom_socket_get_vep_idx_and_vepoll (vepitem->epfd, &vepoll)) != INVALID_VEP_IDX)
+            {
+              if (vepoll->close)
+                {
+                  if (vepoll->count == 1)
+                    {
+                      /*
+                       * force count to zero and
+                       * close this epoll instance
+                       * */
+                      vepoll->count = 0;
+                      vcom_socket_close_vepoll (vepoll->epfd);
+                    }
+                  else
+                    {
+                      vepoll->count -= 1;
+                    }
+                }
+            }
+          }
+
+      }
+    }
 
   return rv;
 }
@@ -2364,13 +2293,6 @@ vcom_socket_shutdown (int __fd, int __how)
   return rv;
 }
 
-/*
- * TBD: remove it once vppvom.h is committed.
- */
-int vppcom_epoll_create (void)
-{
-  return -ENOSYS;
-}
 int
 vcom_socket_epoll_create1 (int __flags)
 {
@@ -2413,11 +2335,307 @@ out:
   return rv;
 }
 
+/*
+ * PRE: vppcom_epoll_ctl() is successful
+ * free_vepitem_on_del : 0 - no_pool_put, 1 - pool_put
+ */
+int
+vcom_socket_ctl_vepitem (int __epfd, int __op, int __fd,
+                         struct epoll_event *__event,
+                         i32 vep_idx, vcom_epoll_t *vepoll,
+                         i32 vfd_id, void *vfd, vcom_fd_type_t type,
+                         int free_vepitem_on_del)
+{
+  int rv = -1;
+  vcom_socket_main_t *vsm = &vcom_socket_main;
+  vcom_epitem_t *vepitem;
+
+  vcom_epitem_key_t epfdfd = {.epfd = __epfd, .fd = __fd};
+  uword *p;
+  i32 vepitemidx;
+
+  i32 *vepitemidxs = 0;
+
+  struct epoll_event revent = {.events = 0, .data.fd = INVALID_FD};
+
+  i32 vec_idx ;
+
+  /* perform control operations on the epoll instance */
+  switch (__op)
+    {
+    case EPOLL_CTL_ADD:
+      /*
+       * supplied file descriptor is already
+       * registered with this epoll instance
+       * */
+      /* vepitem exists */
+      p = hash_get (vsm->epitemidx_by_epfdfd, epfdfd.key);
+      if (p)
+        {
+          rv = -EEXIST;
+          goto out;
+        }
+
+      /* add a new vepitem */
+      pool_get (vsm->vepitems, vepitem);
+      vepitem_init (vepitem);
+
+      vepitemidx = vepitem - vsm->vepitems;
+      hash_set (vsm->epitemidx_by_epfdfd, epfdfd.key, vepitemidx);
+      vepitem_set (vepitem,
+                   __epfd,
+                   __fd, __fd, __fd,
+                   type,
+                   *__event, revent);
+
+      /* update epitemidxs */
+      /* by_epfd */
+      p = hash_get (vsm->epitemidxs_by_epfd, __epfd);
+      if (!p)   /*  not exist */
+        {
+          vepitemidxs = 0;
+          vec_add1 (vepitemidxs, vepitemidx);
+          hash_set (vsm->epitemidxs_by_epfd, __epfd, vepitemidxs);
+        }
+      else      /*  exists */
+        {
+          vepitemidxs = *(i32 **)p;
+          vec_add1 (vepitemidxs, vepitemidx);
+          hash_set3 (vsm->epitemidxs_by_epfd, __epfd, vepitemidxs, 0);
+        }
+      /* update epitemidxs */
+      /* by_fd */
+      p = hash_get (vsm->epitemidxs_by_fd, __fd);
+      if (!p)   /*  not exist */
+        {
+          vepitemidxs = 0;
+          vec_add1 (vepitemidxs, vepitemidx);
+          hash_set (vsm->epitemidxs_by_fd, __fd, vepitemidxs);
+        }
+      else      /*  exists */
+        {
+          vepitemidxs = *(i32 **)p;
+          vec_add1 (vepitemidxs, vepitemidx);
+          hash_set3 (vsm->epitemidxs_by_fd, __fd, vepitemidxs, 0);
+        }
+
+      /* increment vepoll fd count by 1 */
+      vepoll->count +=1;
+
+      rv = 0;
+      goto out;
+      break;
+
+    case EPOLL_CTL_MOD:
+      /*
+       * supplied file descriptor is not
+       * registered with this epoll instance
+       * */
+      /* vepitem not exist */
+      p = hash_get (vsm->epitemidx_by_epfdfd, epfdfd.key);
+      if (!p)
+        {
+          rv = -ENOENT;
+          goto out;
+        }
+      vepitem = pool_elt_at_index (vsm->vepitems, p[0]);
+      if (vepitem)
+        {
+          vepitem->event = *__event;
+          vepitem->revent = revent;
+        }
+
+      rv = 0;
+      goto out;
+      break;
+
+    case EPOLL_CTL_DEL:
+      /*
+       * supplied file descriptor is not
+       * registered with this epoll instance
+       * */
+      /* vepitem not exist */
+      p = hash_get (vsm->epitemidx_by_epfdfd, epfdfd.key);
+      if (!p)
+        {
+          rv = -ENOENT;
+          goto out;
+        }
+      vepitemidx = *(i32 *)p;
+      hash_unset (vsm->epitemidx_by_epfdfd, epfdfd.key);
+
+      /* update epitemidxs */
+      /* by_epfd */
+      p = hash_get (vsm->epitemidxs_by_epfd, __epfd);
+      if (!p)   /*  not exist */
+        {
+          rv = -ENOENT;
+          goto out;
+        }
+      else      /*  exists */
+        {
+          vepitemidxs = *(i32 **)p;
+          vec_idx = vec_search (vepitemidxs, vepitemidx);
+          if(vec_idx != ~0)
+            {
+              vec_del1 (vepitemidxs, vec_idx);
+              if(!vec_len (vepitemidxs))
+                {
+                  vec_free (vepitemidxs);
+                  hash_unset (vsm->epitemidxs_by_epfd, __epfd);
+                }
+            }
+        }
+
+      /* update epitemidxs */
+      /* by_fd */
+      p = hash_get (vsm->epitemidxs_by_fd, __fd);
+      if (!p)   /*  not exist */
+        {
+          rv = -ENOENT;
+          goto out;
+        }
+      else      /*  exists */
+        {
+          vepitemidxs = *(i32 **)p;
+          vec_idx = vec_search (vepitemidxs, vepitemidx);
+          if(vec_idx != ~0)
+            {
+              vec_del1 (vepitemidxs, vec_idx);
+              if(!vec_len (vepitemidxs))
+                {
+                  vec_free (vepitemidxs);
+                  hash_unset (vsm->epitemidxs_by_fd, __fd);
+                }
+            }
+        }
+
+      /* pool put vepitem */
+      vepitem = pool_elt_at_index (vsm->vepitems, vepitemidx);
+      if (free_vepitem_on_del)
+      {
+        if(!vepitem)
+          {
+            rv = -ENOENT;
+            goto out;
+          }
+        vepitem_init(vepitem);
+        pool_put (vsm->vepitems, vepitem);
+      }
+      else
+        {
+          if(!vepitem)
+            {
+              vepitem_init(vepitem);
+            }
+        }
+
+      /* decrement vepoll fd count by 1 */
+      vepoll->count -=1;
+
+      rv = 0;
+      goto out;
+      break;
+
+    default:
+      rv = -EINVAL;
+      goto out;
+      break;
+    }
+
+out:
+  return rv;
+}
+
+/*
+ * PRE: 00. null pointer check on __event
+ *      01. all other parameters are validated
+ */
+
+static int
+vcom_socket_epoll_ctl_internal (int __epfd, int __op, int __fd,
+                                struct epoll_event *__event,
+                                int free_vepitem_on_del)
+{
+  int rv = -1;
+
+  /* vcom_socket_main_t *vsm = &vcom_socket_main; */
+  vcom_epoll_t *vepoll;
+
+  /*__fd could could be vcom socket or vcom epoll or kernel fd */
+  void *vfd;
+  vcom_epoll_t *vfd_vepoll;
+  vcom_socket_t *vfd_vsock;
+
+  i32 vep_idx;
+  i32 vfd_id;
+
+  vcom_fd_type_t type = FD_TYPE_INVALID;
+
+  /* validate __event */
+
+  /* get vep_idx and vepoll */
+  vep_idx = vcom_socket_get_vep_idx_and_vepoll (__epfd, &vepoll);
+  if (vep_idx == INVALID_VEP_IDX)
+    {
+      return -EBADF;
+    }
+
+  /* get vcom fd type, vfd_id and vfd */
+  vfd_id = vcom_socket_get_sid_and_vsock (__fd, &vfd_vsock);
+  if (vfd_id != INVALID_SESSION_ID)
+    {
+      type = FD_TYPE_VCOM_SOCKET;
+      vfd = vfd_vsock;
+    }
+  else if ((vfd_id = vcom_socket_get_vep_idx_and_vepoll (__fd, &vfd_vepoll)) != INVALID_VEP_IDX)
+    {
+      type = FD_TYPE_EPOLL;
+      vfd = vfd_vepoll;
+    }
+  else
+    {
+      /* FD_TYPE_KERNEL not supported by epoll instance */
+      type = FD_TYPE_INVALID;
+      return -EBADF;
+    }
+
+
+  /* vepoll and vsock are now valid */
+  rv = vppcom_epoll_ctl ( vep_idx, __op, vfd_id, __event);
+  if (rv < 0)
+    {
+      return rv;
+    }
+
+  rv = vcom_socket_ctl_vepitem (__epfd, __op, __fd,
+                                __event,
+                                vep_idx, vepoll,
+                                vfd_id, vfd, type,
+                                free_vepitem_on_del);
+  return rv;
+}
+
 int
 vcom_socket_epoll_ctl (int __epfd, int __op, int __fd,
                        struct epoll_event *__event)
 {
-  return -ENOSYS;
+  int rv = -1;
+
+  rv = vcom_socket_epoll_ctl_internal (__epfd, __op, __fd,
+                                       __event, 1);
+  return rv;
+}
+
+static int
+vcom_socket_epoll_ctl1 (int __epfd, int __op, int __fd,
+                       struct epoll_event *__event)
+{
+  int rv = -1;
+
+  rv = vcom_socket_epoll_ctl_internal (__epfd, __op, __fd,
+                                       __event, 0);
+  return rv;
 }
 
 int
@@ -2427,6 +2645,259 @@ vcom_socket_epoll_pwait (int __epfd, struct epoll_event *__events,
 {
     return -ENOSYS;
 }
+
+int
+vcom_socket_main_init (void)
+{
+  vcom_socket_main_t *vsm = &vcom_socket_main;
+
+  if (VCOM_DEBUG > 0)
+    printf ("vcom_socket_main_init\n");
+
+  if (!vsm->init)
+    {
+      /* TBD: define FD_MAXSIZE and use it here */
+      pool_alloc (vsm->vsockets, FD_SETSIZE);
+      vsm->sockidx_by_fd = hash_create (0, sizeof (i32));
+
+      pool_alloc (vsm->vepolls, FD_SETSIZE);
+      vsm->epollidx_by_epfd = hash_create (0, sizeof (i32));
+
+      pool_alloc (vsm->vepitems, FD_SETSIZE);
+      vsm->epitemidx_by_epfdfd = hash_create (0, sizeof (i32));
+
+      vsm->epitemidxs_by_epfd = hash_create (0, sizeof (i32 *));
+      vsm->epitemidxs_by_fd = hash_create (0, sizeof (i32 *));
+
+      vsm->init = 1;
+    }
+
+  return 0;
+}
+
+
+void
+vcom_socket_main_show (void)
+{
+  vcom_socket_main_t *vsm = &vcom_socket_main;
+  vcom_socket_t *vsock;
+
+  vcom_epoll_t *vepoll;
+
+  vcom_epitem_t *vepitem;
+
+  i32 epfd;
+  i32 fd;
+  i32 *vepitemidxs, *vepitemidxs_var;
+
+  if (vsm->init)
+    {
+      /* from active list of vsockets show vsock */
+
+      /* *INDENT-OFF* */
+      pool_foreach (vsock, vsm->vsockets,
+        ({
+          printf(
+                 "fd='%04d', sid='%08x',type='%-30s'\n",
+                 vsock->fd, vsock->sid,
+                 vcom_socket_type_str (vsock->type));
+        }));
+      /* *INDENT-ON* */
+
+      /* from active list of vepolls, show vepoll */
+
+      /* *INDENT-OFF* */
+      pool_foreach (vepoll, vsm->vepolls,
+        ({
+          printf(
+                 "epfd='%04d', vep_idx='%08x', "
+                 "type='%-30s', "
+                 "flags='%d', count='%d', close='%d'\n",
+                 vepoll->epfd, vepoll->vep_idx,
+                 vcom_socket_epoll_type_str (vepoll->type),
+                 vepoll->flags, vepoll->count, vepoll->close);
+        }));
+      /* *INDENT-ON* */
+
+      /* from active list of vepitems, show vepitem */
+
+      /* *INDENT-OFF* */
+      pool_foreach (vepitem, vsm->vepitems,
+        ({
+          printf(
+                 "epfd='%04d', fd='%04d', "
+                 "next_fd='%04d', prev_fd='%04d', "
+                 "type='%-30s', "
+                 "events='%04x', revents='%04x'\n",
+                 vepitem->epfd, vepitem->fd,
+                 vepitem->next_fd, vepitem->prev_fd,
+                 vcom_socket_vcom_fd_type_str (vepitem->type),
+                 vepitem->event.events, vepitem->revent.events);
+        }));
+
+      /* *INDENT-ON* */
+
+      /* show epitemidxs for epfd */
+      /* *INDENT-OFF* */
+      hash_foreach (epfd, vepitemidxs,
+                    vsm->epitemidxs_by_epfd,
+      ({
+        printf("\n[ ");
+        vec_foreach (vepitemidxs_var,vepitemidxs)
+        {
+          printf("'%04d' ", (int)vepitemidxs_var[0]);
+        }
+        printf("]\n");
+      }));
+      /* *INDENT-ON* */
+
+      /* show epitemidxs for fd */
+      /* *INDENT-OFF* */
+      hash_foreach (fd, vepitemidxs,
+                    vsm->epitemidxs_by_fd,
+      ({
+        printf("\n{ ");
+        vec_foreach (vepitemidxs_var,vepitemidxs)
+        {
+          printf("'%04d' ", (int)vepitemidxs_var[0]);
+        }
+        printf("}\n");
+      }));
+      /* *INDENT-ON* */
+
+    }
+}
+
+void
+vcom_socket_main_destroy (void)
+{
+  vcom_socket_main_t *vsm = &vcom_socket_main;
+  vcom_socket_t *vsock;
+
+  vcom_epoll_t *vepoll;
+
+  vcom_epitem_t *vepitem;
+
+  i32 epfd;
+  i32 fd;
+  i32 *vepitemidxs;
+
+
+  if (VCOM_DEBUG > 0)
+    printf ("vcom_socket_main_destroy\n");
+
+  if (vsm->init)
+    {
+
+      /*
+       * from active list of vepitems,
+       * remove all "vepitem" elements from the pool in a safe way
+       * */
+
+      /* *INDENT-OFF* */
+      pool_flush (vepitem, vsm->vepitems,
+        ({
+          if (vepitem->type == FD_TYPE_EPOLL || FD_TYPE_VCOM_SOCKET)
+          {
+              vcom_socket_epoll_ctl1 (vepitem->epfd, EPOLL_CTL_DEL,
+                                     vepitem->fd, NULL);
+             vepitem_init (vepitem);
+          }
+        }));
+      /* *INDENT-ON* */
+
+      pool_free (vsm->vepitems);
+      hash_free (vsm->epitemidx_by_epfdfd);
+
+      /* free vepitemidxs for each epfd */
+      /* *INDENT-OFF* */
+      hash_foreach (epfd, vepitemidxs,
+                    vsm->epitemidxs_by_epfd,
+      ({
+        vec_free (vepitemidxs);
+      }));
+      /* *INDENT-ON* */
+      hash_free (vsm->epitemidxs_by_epfd);
+
+      /* free vepitemidxs for each fd */
+      /* *INDENT-OFF* */
+      hash_foreach (fd, vepitemidxs,
+                    vsm->epitemidxs_by_fd,
+      ({
+        vec_free (vepitemidxs);
+      }));
+      /* *INDENT-ON* */
+      hash_free (vsm->epitemidxs_by_fd);
+
+
+      /*
+       * from active list of vsockets,
+       * close socket and vppcom session
+       * */
+
+      /* *INDENT-OFF* */
+      pool_foreach (vsock, vsm->vsockets,
+        ({
+          if (vsock->type == SOCKET_TYPE_VPPCOM_BOUND)
+            {
+              vppcom_session_close (vsock->sid);
+              vcom_socket_close_socket (vsock->fd);
+              vsocket_init (vsock);
+            }
+        }));
+      /* *INDENT-ON* */
+
+      /*
+       * return vsocket element to the pool
+       * */
+
+      /* *INDENT-OFF* */
+      pool_flush (vsock, vsm->vsockets,
+        ({
+          // vsocket_init(vsock);
+          ;
+        }));
+      /* *INDENT-ON* */
+
+      pool_free (vsm->vsockets);
+      hash_free (vsm->sockidx_by_fd);
+
+      /*
+       * from active list of vepolls,
+       * close epoll and vppcom_epoll
+       * */
+
+      /* *INDENT-OFF* */
+      pool_foreach (vepoll, vsm->vepolls,
+        ({
+          if (vepoll->type == EPOLL_TYPE_VPPCOM_BOUND)
+            {
+              vppcom_session_close (vepoll->vep_idx);
+              vcom_socket_close_epoll (vepoll->epfd); /* TBD: */
+              vepoll_init (vepoll);
+            }
+        }));
+      /* *INDENT-ON* */
+
+      /*
+       * return vepoll element to the pool
+       * */
+
+      /* *INDENT-OFF* */
+      pool_flush (vepoll, vsm->vepolls,
+        ({
+          // vepoll_init(vepoll);
+          ;
+        }));
+      /* *INDENT-ON* */
+
+      pool_free (vsm->vepolls);
+      hash_free (vsm->epollidx_by_epfd);
+
+      vsm->init = 0;
+    }
+}
+
 
 /*
  * fd.io coding-style-patch-verification: ON

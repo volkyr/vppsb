@@ -127,6 +127,15 @@ typedef struct
 
 } vcom_epitem_t;
 
+typedef union vcom_epitem_key
+{
+  struct {
+  i32 fd;
+  i32 epfd;
+  };
+  i64 key;
+} __EPOLL_PACKED vcom_epitem_key_t;
+
 static inline char *
 vcom_socket_type_str (vcom_socket_type_t t)
 {
@@ -243,6 +252,15 @@ vepitem_init (vcom_epitem_t * vepitem)
 }
 
 static inline void
+vepitemkey_init (vcom_epitem_key_t * epfdfd)
+{
+  memset (epfdfd, 0, sizeof (*epfdfd));
+
+  epfdfd->epfd = INVALID_EPFD;
+  epfdfd->fd = INVALID_FD;
+}
+
+static inline void
 vsocket_set (vcom_socket_t * vsock,
              i32 fd, i32 sid, vcom_socket_type_t type)
 {
@@ -285,6 +303,14 @@ vepitem_set (vcom_epitem_t * vepitem,
   vepitem->event = event;
   vepitem->revent = revent;
   /* vcom epitem attributes set here */
+}
+
+static inline void
+vepitemkey_set (vcom_epitem_key_t * epfdfd,
+                i32 epfd, i32 fd)
+{
+  epfdfd->epfd = epfd;
+  epfdfd->fd = fd;
 }
 
 static inline int
