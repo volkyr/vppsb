@@ -2822,12 +2822,12 @@ epoll_wait (int __epfd, struct epoll_event *__events,
                  pid,
                  rv, __epfd, __events,
                  __maxevents, __timeout);
-      if (rv != 0)
+      if (rv < 0)
         {
           errno = -rv;
           return -1;
         }
-      return 0;
+      return rv;
     }
   else
     {
@@ -2883,12 +2883,12 @@ epoll_pwait (int __epfd, struct epoll_event *__events,
                  rv, __epfd, __events,
                  __maxevents, __timeout,
                  __ss);
-      if (rv != 0)
+      if (rv < 0)
         {
           errno = -rv;
           return -1;
         }
-      return 0;
+      return rv;
     }
   else
     {

@@ -2643,7 +2643,48 @@ vcom_socket_epoll_pwait (int __epfd, struct epoll_event *__events,
                          int __maxevents, int __timeout,
                          const __sigset_t *__ss)
 {
-    return -ENOSYS;
+  int rv = -EBADF;
+
+  /* in seconds eg. 3.123456789 seconds */
+  double time_to_wait = (double) 0;
+
+  i32 vep_idx;
+
+  /* validate __event */
+  if (!__events)
+    {
+      rv = -EFAULT;
+      goto out;
+    }
+
+  /* validate __timeout */
+  if (__timeout > 0)
+    {
+      time_to_wait = (double) __timeout / (double) 1000;
+    }
+  else if (__timeout == 0)
+    {
+      time_to_wait = (double) 0;
+    }
+  else if (__timeout == -1)
+    {
+      time_to_wait = ~0;
+    }
+  else
+    {
+      rv = -EBADF;
+      goto out;
+    }
+
+  /* get vep_idx */
+  vep_idx = vcom_socket_get_vep_idx (__epfd);
+  if (vep_idx != INVALID_VEP_IDX)
+    {
+      rv = vppcom_epoll_wait (vep_idx, __events,
+                              __maxevents, time_to_wait);
+    }
+out:
+    return rv;
 }
 
 int
@@ -2742,7 +2783,7 @@ vcom_socket_main_show (void)
       hash_foreach (epfd, vepitemidxs,
                     vsm->epitemidxs_by_epfd,
       ({
-        printf("\n[ ");
+        printf("\n[ '%04d': ", epfd);
         vec_foreach (vepitemidxs_var,vepitemidxs)
         {
           printf("'%04d' ", (int)vepitemidxs_var[0]);
@@ -2756,7 +2797,7 @@ vcom_socket_main_show (void)
       hash_foreach (fd, vepitemidxs,
                     vsm->epitemidxs_by_fd,
       ({
-        printf("\n{ ");
+        printf("\n{ '%04d': ", fd);
         vec_foreach (vepitemidxs_var,vepitemidxs)
         {
           printf("'%04d' ", (int)vepitemidxs_var[0]);
