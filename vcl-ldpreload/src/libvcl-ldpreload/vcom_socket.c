@@ -1624,6 +1624,7 @@ vppcom_recvmsg (int __sid, struct msghdr *__message, int __flags)
   int rv = -1;
   /* rv = vppcom_session_read (__sid, (void *) __message->__buf,
      (int)__n); */
+  rv = -EOPNOTSUPP;
   return rv;
 }
 

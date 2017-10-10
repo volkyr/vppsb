@@ -2899,6 +2899,66 @@ epoll_pwait (int __epfd, struct epoll_event *__events,
   return 0;
 }
 
+/* Poll the file descriptors described by the NFDS structures starting at
+   FDS.  If TIMEOUT is nonzero and not -1, allow TIMEOUT milliseconds for
+   an event to occur; if TIMEOUT is -1, block until an event occurs.
+   Returns the number of file descriptors with events, zero if timed out,
+   or -1 for errors.
+
+   This function is a cancellation point and therefore not marked with
+   __THROW.  */
+int
+vcom_poll (struct pollfd *__fds, nfds_t __nfds, int __timeout)
+{
+  if (vcom_init () != 0)
+    {
+      return -1;
+    }
+
+  return -EOPNOTSUPP;
+}
+
+int
+poll (struct pollfd *__fds, nfds_t __nfds, int __timeout)
+{
+  int rv = 0;
+
+  errno = EOPNOTSUPP;
+  rv = -1;
+  return rv;
+}
+
+#ifdef __USE_GNU
+/* Like poll, but before waiting the threads signal mask is replaced
+   with that specified in the fourth parameter.  For better usability,
+   the timeout value is specified using a TIMESPEC object.
+
+   This function is a cancellation point and therefore not marked with
+   __THROW.  */
+int vcom_ppoll (struct pollfd *__fds, nfds_t __nfds,
+                const struct timespec *__timeout,
+                const __sigset_t *__ss)
+{
+  if (vcom_init () != 0)
+    {
+      return -1;
+    }
+
+  return -EOPNOTSUPP;
+}
+
+int ppoll (struct pollfd *__fds, nfds_t __nfds,
+           const struct timespec *__timeout,
+           const __sigset_t *__ss)
+{
+  int rv = 0;
+
+  errno = EOPNOTSUPP;
+  rv = -1;
+  return rv;
+}
+#endif
+
 void CONSTRUCTOR_ATTRIBUTE vcom_constructor (void);
 
 void DESTRUCTOR_ATTRIBUTE vcom_destructor (void);
