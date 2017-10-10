@@ -264,8 +264,6 @@ tap_rx (vlib_main_t * vm, vlib_node_runtime_t * node, vlib_frame_t * f, int fd)
 
   _vec_len (im->rx_buffers) -= i;
 
-  vlib_buffer_chain_validate (vm, vlib_get_buffer (vm, bi[0]));
-
   /* Get the packet to the output node. */
   {
     vnet_hw_interface_t * hw;
