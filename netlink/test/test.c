@@ -19,6 +19,8 @@
 #include <librtnl/mapper.h>
 #include <vnet/ip/ip.h>
 #include <vnet/fib/fib.h>
+#include <vnet/fib/ip4_fib.h>
+#include <vnet/fib/ip6_fib.h>
 
 u32 handles[10];
 
