@@ -16,6 +16,7 @@
 
 #include "tap_inject.h"
 
+#include <vnet/mfib/mfib_table.h>
 #include <vnet/ip/ip.h>
 #include <vnet/ip/lookup.h>
 #ifdef ip6_add_del_route_next_hop
@@ -176,24 +177,29 @@ tap_inject_enable (void)
   }
 #else
   {
-    dpo_proto_t proto = 0;
     dpo_id_t dpo = DPO_INVALID;
-    fib_prefix_t pfx = {};
 
-    pfx.fp_addr.ip4.as_u32 = 0x000000E0; /* 224.0.0.0 */
-    pfx.fp_len = 24;
-    pfx.fp_proto = FIB_PROTOCOL_IP4;
-    proto = DPO_PROTO_IP4;
+    const mfib_prefix_t pfx_224_0_0_0 = {
+        .fp_len = 24,
+        .fp_proto = FIB_PROTOCOL_IP4,
+        .fp_grp_addr = {
+            .ip4.as_u32 = clib_host_to_net_u32(0xe0000000),
+        },
+        .fp_src_addr = {
+            .ip4.as_u32 = 0,
+        },
+    };
 
-    vlib_node_add_next (vm, ip4_lookup_node.index, im->tx_node_index);
+    dpo_set(&dpo, tap_inject_dpo_type, DPO_PROTO_IP4, ~0);
 
-    dpo_set(&dpo, tap_inject_dpo_type, proto, ~0);
+    index_t repi = replicate_create(1, DPO_PROTO_IP4);
+    replicate_set_bucket(repi, 0, &dpo);
 
-    fib_table_entry_special_dpo_add(0,
-  				  &pfx,
-				  FIB_SOURCE_API,
-  				  FIB_ENTRY_FLAG_EXCLUSIVE,
-  				  &dpo);
+    mfib_table_entry_special_add(0,
+                                 &pfx_224_0_0_0,
+                                 MFIB_SOURCE_API,
+                                 MFIB_ENTRY_FLAG_ACCEPT_ALL_ITF,
+                                 repi);
 
     dpo_reset(&dpo);
   }
