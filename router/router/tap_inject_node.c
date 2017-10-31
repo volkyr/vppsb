@@ -348,6 +348,7 @@ const static char *const tap_inject_tx_nodes[] = {
 };
 
 const static char *const *const tap_inject_nodes[DPO_PROTO_NUM] = {
+  [DPO_PROTO_IP4] = tap_inject_tx_nodes,
   [DPO_PROTO_IP6] = tap_inject_tx_nodes,
 };
 
