@@ -30,7 +30,7 @@
 
 
 static clib_error_t *
-tap_inject_tap_read (unix_file_t * f)
+tap_inject_tap_read (clib_file_t * f)
 {
   vlib_main_t * vm = vlib_get_main ();
   tap_inject_main_t * im = tap_inject_get_main ();
@@ -52,7 +52,7 @@ tap_inject_tap_connect (vnet_hw_interface_t * hw)
   static const int one = 1;
   int fd;
   struct ifreq ifr;
-  unix_file_t template;
+  clib_file_t template;
   u32 tap_fd;
   u8 * name;
 
@@ -120,7 +120,7 @@ tap_inject_tap_connect (vnet_hw_interface_t * hw)
   template.read_function = tap_inject_tap_read;
   template.file_descriptor = tap_fd;
 
-  unix_file_add (&unix_main, &template);
+  clib_file_add (&file_main, &template);
 
   tap_inject_insert_tap (sw->sw_if_index, tap_fd, ifr.ifr_ifindex);
 

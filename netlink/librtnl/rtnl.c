@@ -31,6 +31,7 @@
 
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <errno.h>
 
 #undef DBL_MAX
 #define DBL_MAX 1000000000.0
@@ -102,7 +103,7 @@ rtnl_cancel_timeout(rtnl_ns_t *ns)
   ns->timeout = DBL_MAX;
 }
 
-static clib_error_t *rtnl_read_cb(struct unix_file * f)
+static clib_error_t *rtnl_read_cb(struct clib_file * f)
 {
   rtnl_main_t *rm = &rtnl_main;
   vlib_main_t *vm = vlib_get_main();
@@ -138,7 +139,7 @@ int rtnl_dump_request(rtnl_ns_t *ns, int type, void *req, size_t len)
 
 static void rtnl_socket_close(rtnl_ns_t *ns)
 {
-  unix_file_del(&unix_main, &unix_main.file_pool[ns->unix_index]);
+  clib_file_del(&file_main, &file_main.file_pool[ns->unix_index]);
   close(ns->rtnl_socket);
 }
 
@@ -259,11 +260,11 @@ static int rtnl_socket_open(rtnl_ns_t *ns)
     return -3;
   }
 
-  unix_file_t template = {0};
+  clib_file_t template = {0};
   template.read_function = rtnl_read_cb;
   template.file_descriptor = ns->rtnl_socket;
   template.private_data = (uword) (ns - rm->streams);
-  ns->unix_index = unix_file_add (&unix_main, &template);
+  ns->unix_index = clib_file_add (&file_main, &template);
   return 0;
 }
 
