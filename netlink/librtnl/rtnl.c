@@ -79,6 +79,16 @@ static vlib_node_registration_t rtnl_process_node;
 #define RTNL_BUFFSIZ 16384
 #define RTNL_DUMP_TIMEOUT 1
 
+static inline u32 grpmask(u32 g)
+{
+  ASSERT (g <= 31);
+  if (g) {
+    return 1 << (g - 1);
+  } else
+    return 0;
+}
+
+
 u8 *format_rtnl_nsname2path(u8 *s, va_list *args)
 {
   char *nsname = va_arg(*args, char *);
@@ -116,21 +126,21 @@ int rtnl_dump_request(rtnl_ns_t *ns, int type, void *req, size_t len)
 {
   struct sockaddr_nl nladdr = { .nl_family = AF_NETLINK };
   struct nlmsghdr nlh = {
-      .nlmsg_len = NLMSG_LENGTH(len),
-      .nlmsg_type = type,
-      .nlmsg_flags = NLM_F_DUMP|NLM_F_REQUEST,
-      .nlmsg_pid = 0,
-      .nlmsg_seq = ++ns->rtnl_seq,
+    .nlmsg_len = NLMSG_LENGTH(len),
+    .nlmsg_type = type,
+    .nlmsg_flags = NLM_F_DUMP|NLM_F_REQUEST,
+    .nlmsg_pid = 0,
+    .nlmsg_seq = ++ns->rtnl_seq,
   };
   struct iovec iov[2] = {
-      { .iov_base = &nlh, .iov_len = sizeof(nlh) },
-      { .iov_base = req, .iov_len = len }
+    { .iov_base = &nlh, .iov_len = sizeof(nlh) },
+    { .iov_base = req, .iov_len = len }
   };
   struct msghdr msg = {
-      .msg_name = &nladdr,
-      .msg_namelen =  sizeof(nladdr),
-      .msg_iov = iov,
-      .msg_iovlen = 2,
+    .msg_name = &nladdr,
+    .msg_namelen =  sizeof(nladdr),
+    .msg_iov = iov,
+    .msg_iovlen = 2,
   };
   if(sendmsg(ns->rtnl_socket, &msg, 0) < 0)
     return -1;
@@ -165,10 +175,10 @@ static int rtnl_exec_in_namespace_byfd(int fd, void *(*fn)(void *), void *arg, v
   pthread_t thread;
   void *thread_ret;
   struct rtnl_thread_exec ex = {
-      .fd = fd,
-      .fn = fn,
-      .arg = arg,
-      .ret = ret
+    .fd = fd,
+    .fn = fn,
+    .arg = arg,
+    .ret = ret
   };
   if(pthread_create(&thread, NULL, rtnl_exec_in_thread_fn, &ex))
     return -errno;
@@ -246,13 +256,14 @@ static int rtnl_socket_open(rtnl_ns_t *ns)
   }
 
   struct sockaddr_nl addr = {
-      .nl_family = AF_NETLINK,
-      .nl_pad = 0,
-      .nl_pid = 0,
-      .nl_groups =
-           RTMGRP_LINK | RTMGRP_IPV6_IFADDR | RTMGRP_IPV4_IFADDR |
-           RTMGRP_IPV4_ROUTE | RTMGRP_IPV6_ROUTE | RTMGRP_NEIGH |
-           RTMGRP_NOTIFY,
+    .nl_family = AF_NETLINK,
+    .nl_pad = 0,
+    .nl_pid = 0,
+    /*add mpls message group*/
+    .nl_groups = grpmask(RTNLGRP_LINK)| grpmask(RTNLGRP_IPV6_IFADDR) |
+    grpmask(RTNLGRP_IPV4_IFADDR) | grpmask(RTNLGRP_IPV4_ROUTE) |
+    grpmask(RTNLGRP_IPV6_ROUTE) | grpmask(RTNLGRP_NEIGH) |
+    grpmask(RTNLGRP_NOTIFY) | grpmask(RTNLGRP_MPLS_ROUTE),
   };
 
   if (bind(ns->rtnl_socket, (struct sockaddr*) &addr, sizeof(addr))) {
@@ -298,49 +309,49 @@ rtnl_sync_done(rtnl_ns_t *ns)
   struct rtmsg rtmsg;
   struct ndmsg ndmsg;
   switch (ns->sync_state) {
-    case RTNL_SS_OPENING:
-      //Cannot happen here
-      break;
-    case RTNL_SS_LINK:
-      memset(&addrmsg, 0, sizeof(addrmsg));
-      addrmsg.ifa_family = AF_UNSPEC;
-      if(rtnl_dump_request(ns, RTM_GETADDR, &addrmsg, sizeof(addrmsg))) {
-        rtnl_sync_reset(ns);
-        rtnl_schedule_timeout(ns, rm->now + 1);
-        return;
-      }
-      rtnl_schedule_timeout(ns, rm->now + RTNL_DUMP_TIMEOUT);
-      ns->sync_state = RTNL_SS_ADDR;
-      break;
-    case RTNL_SS_ADDR:
-    case RTNL_SS_ROUTE4:
-      memset(&rtmsg, 0, sizeof(rtmsg));
-      rtmsg.rtm_family = (ns->sync_state == RTNL_SS_ADDR)?AF_INET:AF_INET6;
-      rtmsg.rtm_table = RT_TABLE_UNSPEC;
-      if(rtnl_dump_request(ns, RTM_GETROUTE, &rtmsg, sizeof(rtmsg))) {
-        rtnl_sync_reset(ns);
-        rtnl_schedule_timeout(ns, rm->now + 1);
-        return;
-      }
-      rtnl_schedule_timeout(ns, rm->now + RTNL_DUMP_TIMEOUT);
-      ns->sync_state = (ns->sync_state == RTNL_SS_ADDR)?RTNL_SS_ROUTE4:RTNL_SS_ROUTE6;
-      break;
-    case RTNL_SS_ROUTE6:
-      memset(&ndmsg, 0, sizeof(ndmsg));
-      ndmsg.ndm_family = AF_UNSPEC;
-      if(rtnl_dump_request(ns, RTM_GETNEIGH, &ndmsg, sizeof(ndmsg))) {
-        rtnl_sync_reset(ns);
-        rtnl_schedule_timeout(ns, rm->now + 1);
-        return;
-      }
-      rtnl_schedule_timeout(ns, rm->now + RTNL_DUMP_TIMEOUT);
-      ns->sync_state = RTNL_SS_NEIGH;
-      break;
-    case RTNL_SS_NEIGH:
-      ns->state = RTNL_S_READY;
-      ns->sync_state = 0;
-      rtnl_cancel_timeout(ns);
-      break;
+  case RTNL_SS_OPENING:
+    //Cannot happen here
+    break;
+  case RTNL_SS_LINK:
+    memset(&addrmsg, 0, sizeof(addrmsg));
+    addrmsg.ifa_family = AF_UNSPEC;
+    if(rtnl_dump_request(ns, RTM_GETADDR, &addrmsg, sizeof(addrmsg))) {
+      rtnl_sync_reset(ns);
+      rtnl_schedule_timeout(ns, rm->now + 1);
+      return;
+    }
+    rtnl_schedule_timeout(ns, rm->now + RTNL_DUMP_TIMEOUT);
+    ns->sync_state = RTNL_SS_ADDR;
+    break;
+  case RTNL_SS_ADDR:
+  case RTNL_SS_ROUTE4:
+    memset(&rtmsg, 0, sizeof(rtmsg));
+    rtmsg.rtm_family = (ns->sync_state == RTNL_SS_ADDR)?AF_INET:AF_INET6;
+    rtmsg.rtm_table = RT_TABLE_UNSPEC;
+    if(rtnl_dump_request(ns, RTM_GETROUTE, &rtmsg, sizeof(rtmsg))) {
+      rtnl_sync_reset(ns);
+      rtnl_schedule_timeout(ns, rm->now + 1);
+      return;
+    }
+    rtnl_schedule_timeout(ns, rm->now + RTNL_DUMP_TIMEOUT);
+    ns->sync_state = (ns->sync_state == RTNL_SS_ADDR)?RTNL_SS_ROUTE4:RTNL_SS_ROUTE6;
+    break;
+  case RTNL_SS_ROUTE6:
+    memset(&ndmsg, 0, sizeof(ndmsg));
+    ndmsg.ndm_family = AF_UNSPEC;
+    if(rtnl_dump_request(ns, RTM_GETNEIGH, &ndmsg, sizeof(ndmsg))) {
+      rtnl_sync_reset(ns);
+      rtnl_schedule_timeout(ns, rm->now + 1);
+      return;
+    }
+    rtnl_schedule_timeout(ns, rm->now + RTNL_DUMP_TIMEOUT);
+    ns->sync_state = RTNL_SS_NEIGH;
+    break;
+  case RTNL_SS_NEIGH:
+    ns->state = RTNL_S_READY;
+    ns->sync_state = 0;
+    rtnl_cancel_timeout(ns);
+    break;
   }
 }
 
@@ -350,28 +361,28 @@ rtnl_sync_timeout(rtnl_ns_t *ns)
   rtnl_main_t *rm = &rtnl_main;
   struct ifinfomsg imsg = {};
   switch (ns->sync_state) {
-    case RTNL_SS_OPENING:
-      if (rtnl_socket_open(ns)) {
-        rtnl_schedule_timeout(ns, rm->now + 10);
-        return;
-      }
-      imsg.ifi_family = AF_UNSPEC;
-      if (rtnl_dump_request(ns, RTM_GETLINK, &imsg, sizeof(imsg))) {
-        rtnl_sync_reset(ns);
-        rtnl_schedule_timeout(ns, rm->now + 10);
-      }
-      ns->sync_state = RTNL_SS_LINK;
-      rtnl_schedule_timeout(ns, rm->now + 2);
-      break;
-    case RTNL_SS_LINK:
-    case RTNL_SS_ADDR:
-    case RTNL_SS_ROUTE4:
-    case RTNL_SS_ROUTE6:
-    case RTNL_SS_NEIGH:
-      //Timeout happened while synchronizing
+  case RTNL_SS_OPENING:
+    if (rtnl_socket_open(ns)) {
+      rtnl_schedule_timeout(ns, rm->now + 10);
+      return;
+    }
+    imsg.ifi_family = AF_UNSPEC;
+    if (rtnl_dump_request(ns, RTM_GETLINK, &imsg, sizeof(imsg))) {
       rtnl_sync_reset(ns);
-      rtnl_schedule_timeout(ns, rm->now + 1);
-      break;
+      rtnl_schedule_timeout(ns, rm->now + 10);
+    }
+    ns->sync_state = RTNL_SS_LINK;
+    rtnl_schedule_timeout(ns, rm->now + 2);
+    break;
+  case RTNL_SS_LINK:
+  case RTNL_SS_ADDR:
+  case RTNL_SS_ROUTE4:
+  case RTNL_SS_ROUTE6:
+  case RTNL_SS_NEIGH:
+    //Timeout happened while synchronizing
+    rtnl_sync_reset(ns);
+    rtnl_schedule_timeout(ns, rm->now + 1);
+    break;
   }
 }
 
@@ -383,34 +394,34 @@ rtnl_ns_recv(rtnl_ns_t *ns, struct nlmsghdr *hdr)
 
   if (ns->state == RTNL_S_SYNC &&
       ((hdr->nlmsg_flags & RTM_F_NOTIFY) ||
-          (hdr->nlmsg_seq != (ns->rtnl_seq)))) {
+       (hdr->nlmsg_seq != (ns->rtnl_seq)))) {
     clib_warning("Received notification while in sync. Restart synchronization.");
     rtnl_sync_reset(ns);
     rtnl_schedule_timeout(ns, rm->now);
   }
 
   switch (hdr->nlmsg_type) {
-    case NLMSG_DONE:
-      rtnl_sync_done(ns);
-      break;
-    case NLMSG_ERROR:
-      if((ret = rtnl_rcv_error(ns, hdr, &error)))
-        return ret;
-      break;
-    case RTM_NEWROUTE:
-    case RTM_DELROUTE:
-    case RTM_NEWLINK:
-    case RTM_DELLINK:
-    case RTM_NEWADDR:
-    case RTM_DELADDR:
-    case RTM_NEWNEIGH:
-    case RTM_DELNEIGH:
-      if (ns->stream.recv_message)
-        ns->stream.recv_message(hdr, ns->stream.opaque);
-      break;
-    default:
-      clib_warning("Unknown rtnetlink type %d", hdr->nlmsg_type);
-      break;
+  case NLMSG_DONE:
+    rtnl_sync_done(ns);
+    break;
+  case NLMSG_ERROR:
+    if((ret = rtnl_rcv_error(ns, hdr, &error)))
+      return ret;
+    break;
+  case RTM_NEWROUTE:
+  case RTM_DELROUTE:
+  case RTM_NEWLINK:
+  case RTM_DELLINK:
+  case RTM_NEWADDR:
+  case RTM_DELADDR:
+  case RTM_NEWNEIGH:
+  case RTM_DELNEIGH:
+    if (ns->stream.recv_message)
+      ns->stream.recv_message(hdr, ns->stream.opaque);
+    break;
+  default:
+    clib_warning("Unknown rtnetlink type %d", hdr->nlmsg_type);
+    break;
   }
   return 0;
 }
@@ -457,7 +468,7 @@ rtnl_process_read(rtnl_ns_t *ns)
     for(hdr = (struct nlmsghdr *) buff;
         len > 0;
         len -= NLMSG_ALIGN(hdr->nlmsg_len),
-            hdr = (struct nlmsghdr *) (((uint8_t *) hdr) + NLMSG_ALIGN(hdr->nlmsg_len))) {
+          hdr = (struct nlmsghdr *) (((uint8_t *) hdr) + NLMSG_ALIGN(hdr->nlmsg_len))) {
       if((sizeof(*hdr) > (size_t)len) || (hdr->nlmsg_len > (size_t)len)) {
         clib_warning("rtnetlink buffer too small (%d Vs %d)", (int) hdr->nlmsg_len, (int) len);
         return -1;
@@ -473,13 +484,13 @@ static void
 rtnl_process_timeout(rtnl_ns_t *ns)
 {
   switch (ns->state) {
-    case RTNL_S_SYNC:
-      rtnl_sync_timeout(ns);
-      break;
-    case RTNL_S_INIT:
-    case RTNL_S_READY:
-      clib_warning("Should not happen");
-      break;
+  case RTNL_S_SYNC:
+    rtnl_sync_timeout(ns);
+    break;
+  case RTNL_S_INIT:
+  case RTNL_S_READY:
+    clib_warning("Should not happen");
+    break;
   }
 }
 
@@ -503,18 +514,18 @@ rtnl_process (vlib_main_t * vm,
 
     if (event_type == ~0) { //Clock event or no event
       pool_foreach(ns, rm->streams, {
-         if (ns->timeout < rm->now) {
-           ns->timeout = DBL_MAX;
-           rtnl_process_timeout(ns);
-         }
-      });
+          if (ns->timeout < rm->now) {
+            ns->timeout = DBL_MAX;
+            rtnl_process_timeout(ns);
+          }
+        });
     } else {
       rtnl_ns_t *ns;
       uword *d;
       vec_foreach(d, event_data) {
         ns = &rm->streams[d[0]];
         switch (event_type)
-        {
+          {
           case RTNL_E_CLOSE:
             rtnl_process_close(ns);
             break;
@@ -524,7 +535,7 @@ rtnl_process (vlib_main_t * vm,
           case RTNL_E_READ:
             rtnl_process_read(ns);
             break;
-        }
+          }
       }
     }
 
@@ -534,15 +545,15 @@ rtnl_process (vlib_main_t * vm,
     pool_foreach(ns, rm->streams, {
         if (ns->timeout < timeout)
           timeout = ns->timeout;
-    });
+      });
   }
   return frame->n_vectors;
 }
 
 VLIB_REGISTER_NODE(rtnl_process_node, static) = {
-    .function = rtnl_process,
-    .name = "rtnl-process",
-    .type = VLIB_NODE_TYPE_PROCESS,
+  .function = rtnl_process,
+  .name = "rtnl-process",
+  .type = VLIB_NODE_TYPE_PROCESS,
 };
 
 u32

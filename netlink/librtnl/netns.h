@@ -25,6 +25,11 @@
 
 #include <librtnl/rtnl.h>
 
+/*include it for 'struct mpls_label'*/
+#include <linux/mpls.h>
+/*so far depth is fixed, looking into ways to be dynamic*/
+#define MPLS_STACK_DEPTH 7
+
 typedef struct {
   struct ifinfomsg ifi;
   u8 hwaddr[IFHWADDRLEN];
@@ -41,6 +46,7 @@ typedef struct {
   struct rtmsg rtm;
   u8 dst[16];
   u8 src[16];
+  u8 via[16];
   u8 prefsrc[16];
   u32 iif;
   u32 oif;
@@ -48,6 +54,7 @@ typedef struct {
   u8 gateway[16];
   u32 priority;
   struct rta_cacheinfo cacheinfo;
+  struct mpls_label encap[MPLS_STACK_DEPTH];
   f64 last_updated;
 } ns_route_t;
 
