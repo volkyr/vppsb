@@ -66,6 +66,30 @@ The objective of this project is to continue to build out better integration
 with host operating system and for providing a basis to enable completely
 or partially unmodified applications to take advantage of a fast datapath.
 
+### MPLS related enhancement to router plugin
+
+Some changes made to router plugin enable it to support mpls label encapsulation.
+
+To test this feature, first install router plugin using instructions
+in section "Build/Install", and then run following commands
+
+$vppctl enable tap-inject
+$ifconfig vpp0 <IP> up
+$ip route add <IP> encap mpls <LABELS> via <IP> dev vpp0
+$vppctl show ip fib
+
+You should see labels in ip fib table.
+
+you can also run following commands
+
+$vppctl enable tap-inject
+$vppctl mpls table add 0
+$vppctl set int mpls <INTERFACE> enable
+$ip -f mpls route add 333 dev vpp0
+$vppctl show mpls fib
+
+You should see dst label and interface in mpls table.
+
 ### Main contributors
 
-Jeff Shaw - LF-ID:jbshaw
+Jeff Shaw - LF-ID:jbshaw, Chad Chengwei Wang - LF-ID:flinter (MPLS)

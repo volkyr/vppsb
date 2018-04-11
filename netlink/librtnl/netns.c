@@ -23,10 +23,10 @@
 /* Enable some RTA values debug */
 //#define RTNL_CHECK
 
-#define is_nonzero(x)                      \
-  ({                                       \
-    u8 __is_zero_zero[sizeof(x)] = {};     \
-    memcmp(__is_zero_zero, &x, sizeof(x)); \
+#define is_nonzero(x)                           \
+  ({                                            \
+    u8 __is_zero_zero[sizeof(x)] = {};          \
+    memcmp(__is_zero_zero, &x, sizeof(x));      \
   })
 
 typedef struct {
@@ -36,22 +36,22 @@ typedef struct {
   u16 size;     //Length of the attribute
 } rtnl_mapping_t;
 
-#define ns_foreach_ifla           \
-  _(IFLA_ADDRESS, hwaddr)         \
-  _(IFLA_BROADCAST, broadcast)    \
-  _(IFLA_IFNAME, ifname)          \
-  _(IFLA_MASTER, master)          \
-  _(IFLA_MTU, mtu)                \
+#define ns_foreach_ifla                         \
+  _(IFLA_ADDRESS, hwaddr)                       \
+  _(IFLA_BROADCAST, broadcast)                  \
+  _(IFLA_IFNAME, ifname)                        \
+  _(IFLA_MASTER, master)                        \
+  _(IFLA_MTU, mtu)                              \
   _(IFLA_QDISC, qdisc)
 
 static rtnl_mapping_t ns_ifmap[] = {
-#define _(t, e)                        \
-{                                      \
-    .type = t,                         \
-    .offset = offsetof(ns_link_t, e),  \
-    .size = sizeof(((ns_link_t*)0)->e) \
-},
-    ns_foreach_ifla
+#define _(t, e)                                 \
+  {                                             \
+    .type = t,                                  \
+    .offset = offsetof(ns_link_t, e),           \
+    .size = sizeof(((ns_link_t*)0)->e)          \
+  },
+  ns_foreach_ifla
 #undef _
   { .type = 0 }
 };
@@ -63,25 +63,27 @@ u8 *format_ns_link (u8 *s, va_list *args)
   return s;
 }
 
-#define ns_foreach_rta                \
-  _(RTA_DST, dst, 1)                  \
-  _(RTA_SRC, src, 1)                  \
-  _(RTA_GATEWAY, gateway, 1)          \
-  _(RTA_IIF, iif, 1)                  \
-  _(RTA_OIF, oif, 1)                  \
-  _(RTA_PREFSRC, prefsrc, 0)          \
-  _(RTA_TABLE, table, 0)              \
-  _(RTA_PRIORITY, priority, 0)        \
-  _(RTA_CACHEINFO, cacheinfo, 0)
+#define ns_foreach_rta                          \
+  _(RTA_DST, dst, 1)                            \
+  _(RTA_SRC, src, 1)                            \
+  _(RTA_VIA, via, 1)                            \
+  _(RTA_GATEWAY, gateway, 1)                    \
+  _(RTA_IIF, iif, 1)                            \
+  _(RTA_OIF, oif, 1)                            \
+  _(RTA_PREFSRC, prefsrc, 0)                    \
+  _(RTA_TABLE, table, 0)                        \
+  _(RTA_PRIORITY, priority, 0)                  \
+  _(RTA_CACHEINFO, cacheinfo, 0)                \
+  _(RTA_ENCAP, encap, 1)
 
 static rtnl_mapping_t ns_routemap[] = {
-#define _(t, e, u)                      \
-{                                       \
-    .type = t, .unique = u,             \
-    .offset = offsetof(ns_route_t, e),  \
-    .size = sizeof(((ns_route_t*)0)->e) \
-},
-    ns_foreach_rta
+#define _(t, e, u)                              \
+  {                                             \
+    .type = t, .unique = u,                     \
+    .offset = offsetof(ns_route_t, e),          \
+    .size = sizeof(((ns_route_t*)0)->e)         \
+  },
+  ns_foreach_rta
 #undef _
   { .type = 0 }
 };
@@ -108,22 +110,22 @@ u8 *format_ns_route (u8 *s, va_list *args)
   return s;
 }
 
-#define ns_foreach_ifaddr         \
-  _(IFA_ADDRESS, addr, 1)         \
-  _(IFA_LOCAL, local, 1)          \
-  _(IFA_LABEL, label, 0)          \
-  _(IFA_BROADCAST, broadcast, 0)  \
-  _(IFA_ANYCAST, anycast, 0)      \
+#define ns_foreach_ifaddr                       \
+  _(IFA_ADDRESS, addr, 1)                       \
+  _(IFA_LOCAL, local, 1)                        \
+  _(IFA_LABEL, label, 0)                        \
+  _(IFA_BROADCAST, broadcast, 0)                \
+  _(IFA_ANYCAST, anycast, 0)                    \
   _(IFA_CACHEINFO, cacheinfo, 0)
 
 static rtnl_mapping_t ns_addrmap[] = {
-#define _(t, e, u)                      \
-{                                       \
-    .type = t, .unique = u,             \
-    .offset = offsetof(ns_addr_t, e),   \
-    .size = sizeof(((ns_addr_t*)0)->e)  \
-},
-    ns_foreach_ifaddr
+#define _(t, e, u)                              \
+  {                                             \
+    .type = t, .unique = u,                     \
+    .offset = offsetof(ns_addr_t, e),           \
+    .size = sizeof(((ns_addr_t*)0)->e)          \
+  },
+  ns_foreach_ifaddr
 #undef _
   { .type = 0 }
 };
@@ -140,7 +142,7 @@ u8 *format_ns_addr (u8 *s, va_list *args)
   if (is_nonzero(a->anycast))
     s = format(s, " anycast %U", format_ip, a->anycast);
   if (is_nonzero(a->local))
-      s = format(s, " local %U", format_ip, a->local);
+    s = format(s, " local %U", format_ip, a->local);
   return s;
 }
 
@@ -149,20 +151,20 @@ u8 *format_ns_addr (u8 *s, va_list *args)
 #define NDA_PAYLOAD(n) NLMSG_PAYLOAD(n,sizeof(struct ndmsg))
 #endif
 
-#define ns_foreach_neigh         \
-  _(NDA_DST, dst, 1)             \
-  _(NDA_LLADDR, lladdr, 0)       \
-  _(NDA_PROBES, probes, 0)       \
+#define ns_foreach_neigh                        \
+  _(NDA_DST, dst, 1)                            \
+  _(NDA_LLADDR, lladdr, 0)                      \
+  _(NDA_PROBES, probes, 0)                      \
   _(NDA_CACHEINFO, cacheinfo, 0)
 
 static rtnl_mapping_t ns_neighmap[] = {
-#define _(t, e, u)                      \
-{                                       \
-    .type = t, .unique = u,             \
-    .offset = offsetof(ns_neigh_t, e),  \
-    .size = sizeof(((ns_neigh_t*)0)->e) \
-},
-    ns_foreach_neigh
+#define _(t, e, u)                              \
+  {                                             \
+    .type = t, .unique = u,                     \
+    .offset = offsetof(ns_neigh_t, e),          \
+    .size = sizeof(((ns_neigh_t*)0)->e)         \
+  },
+  ns_foreach_neigh
 #undef _
   { .type = 0 }
 };
@@ -175,7 +177,7 @@ u8 *format_ns_neigh (u8 *s, va_list *args)
   if (is_nonzero(n->lladdr))
     s = format(s, " lladdr %U", format_ethernet_address, n->lladdr);
   if (n->probes)
-      s = format(s, " probes %d", n->probes);
+    s = format(s, " probes %d", n->probes);
   return s;
 }
 
@@ -282,14 +284,23 @@ rtnl_entry_set(void *entry,
                int init)
 {
   for (; map->type != 0; map++) {
+
     struct rtattr *rta = rtas[map->type];
-    if (rta) {
+
+    if(map->type == RTA_ENCAP && rta) {
+      /*Data of RTA_ENCAP is a pointer to rta attributes for MPLS*/
+      rta = (struct rtattr*)RTA_DATA(rta);
       if (RTA_PAYLOAD(rta) > map->size) {
-        clib_warning("rta (type=%d len=%d) too long (max %d)",
-                           rta->rta_type, rta->rta_len, map->size);
+        clib_warning("rta (type=%d len=%d) too long (max %d)", rta->rta_type, rta->rta_len, map->size);
         return -1;
       }
-
+      memcpy(entry + map->offset, RTA_DATA(rta), map->size);
+      memset(entry + map->offset + map->size, 0, 0);
+    } else if (rta) {
+      if (RTA_PAYLOAD(rta) > map->size) {
+        clib_warning("rta (type=%d len=%d) too long (max %d)", rta->rta_type, rta->rta_len, map->size);
+        return -1;
+      }
       memcpy(entry + map->offset, RTA_DATA(rta), RTA_PAYLOAD(rta));
       memset(entry + map->offset + RTA_PAYLOAD(rta), 0, map->size - RTA_PAYLOAD(rta));
     } else if (init) {
@@ -305,9 +316,9 @@ netns_notify(netns_p *ns, void *obj, netns_type_t type, u32 flags)
   netns_main_t *nm = &netns_main;
   netns_handle_t *h;
   pool_foreach(h, nm->handles, {
-     if (h->netns_index == (ns - nm->netnss) &&  h->notify)
-       h->notify(obj, type, flags, h->opaque);
-  });
+      if (h->netns_index == (ns - nm->netnss) &&  h->notify)
+        h->notify(obj, type, flags, h->opaque);
+    });
 }
 
 static_always_inline int
@@ -330,7 +341,7 @@ ns_get_link(netns_p *ns, struct ifinfomsg *ifi, struct rtattr *rtas[])
   pool_foreach(link, ns->netns.links, {
       if(ifi->ifi_index == link->ifi.ifi_index)
         return link;
-  });
+    });
   return NULL;
 }
 
@@ -343,12 +354,12 @@ ns_rcv_link(netns_p *ns, struct nlmsghdr *hdr)
   size_t datalen = hdr->nlmsg_len - NLMSG_ALIGN(sizeof(*hdr));
 
   if(datalen < sizeof(*ifi))
-      return -1;
+    return -1;
 
   ifi = NLMSG_DATA(hdr);
   if((datalen > NLMSG_ALIGN(sizeof(*ifi))) &&
-      rtnl_parse_rtattr(rtas, IFLA_MAX, IFLA_RTA(ifi),
-                        IFLA_PAYLOAD(hdr))) {
+     rtnl_parse_rtattr(rtas, IFLA_MAX, IFLA_RTA(ifi),
+                       IFLA_PAYLOAD(hdr))) {
     return -1;
   }
 #ifdef RTNL_CHECK
@@ -385,19 +396,19 @@ ns_get_route(netns_p *ns, struct rtmsg *rtm, struct rtattr *rtas[])
 
   //This describes the values which uniquely identify a route
   struct rtmsg msg = {
-      .rtm_family = 0xff,
-      .rtm_dst_len = 0xff,
-      .rtm_src_len = 0xff,
-      .rtm_table = 0xff,
-      .rtm_protocol = 0xff,
-      .rtm_type = 0xff
+    .rtm_family = 0xff,
+    .rtm_dst_len = 0xff,
+    .rtm_src_len = 0xff,
+    .rtm_table = 0xff,
+    .rtm_protocol = 0xff,
+    .rtm_type = 0xff
   };
 
   pool_foreach(route, ns->netns.routes, {
       if(mask_match(&route->rtm, rtm, &msg, sizeof(struct rtmsg)) &&
-          rtnl_entry_match(route, rtas, ns_routemap))
+         rtnl_entry_match(route, rtas, ns_routemap))
         return route;
-  });
+    });
   return NULL;
 }
 
@@ -414,8 +425,8 @@ ns_rcv_route(netns_p *ns, struct nlmsghdr *hdr)
 
   rtm = NLMSG_DATA(hdr);
   if((datalen > NLMSG_ALIGN(sizeof(*rtm))) &&
-      rtnl_parse_rtattr(rtas, RTA_MAX, RTM_RTA(rtm),
-                        RTM_PAYLOAD(hdr))) {
+     rtnl_parse_rtattr(rtas, RTA_MAX, RTM_RTA(rtm),
+                       RTM_PAYLOAD(hdr))) {
     return -1;
   }
 #ifdef RTNL_CHECK
@@ -452,15 +463,15 @@ ns_get_addr(netns_p *ns, struct ifaddrmsg *ifaddr, struct rtattr *rtas[])
 
   //This describes the values which uniquely identify a route
   struct ifaddrmsg msg = {
-      .ifa_family = 0xff,
-      .ifa_prefixlen = 0xff,
+    .ifa_family = 0xff,
+    .ifa_prefixlen = 0xff,
   };
 
   pool_foreach(addr, ns->netns.addresses, {
       if(mask_match(&addr->ifaddr, ifaddr, &msg, sizeof(struct ifaddrmsg)) &&
-          rtnl_entry_match(addr, rtas, ns_addrmap))
+         rtnl_entry_match(addr, rtas, ns_addrmap))
         return addr;
-  });
+    });
   return NULL;
 }
 
@@ -477,8 +488,8 @@ ns_rcv_addr(netns_p *ns, struct nlmsghdr *hdr)
 
   ifaddr = NLMSG_DATA(hdr);
   if((datalen > NLMSG_ALIGN(sizeof(*ifaddr))) &&
-      rtnl_parse_rtattr(rtas, IFA_MAX, IFA_RTA(ifaddr),
-                        IFA_PAYLOAD(hdr))) {
+     rtnl_parse_rtattr(rtas, IFA_MAX, IFA_RTA(ifaddr),
+                       IFA_PAYLOAD(hdr))) {
     return -1;
   }
 #ifdef RTNL_CHECK
@@ -515,15 +526,15 @@ ns_get_neigh(netns_p *ns, struct ndmsg *nd, struct rtattr *rtas[])
 
   //This describes the values which uniquely identify a route
   struct ndmsg msg = {
-      .ndm_family = 0xff,
-      .ndm_ifindex = 0xff,
+    .ndm_family = 0xff,
+    .ndm_ifindex = 0xff,
   };
 
   pool_foreach(neigh, ns->netns.neighbors, {
       if(mask_match(&neigh->nd, nd, &msg, sizeof(&msg)) &&
-          rtnl_entry_match(neigh, rtas, ns_neighmap))
+         rtnl_entry_match(neigh, rtas, ns_neighmap))
         return neigh;
-  });
+    });
   return NULL;
 }
 
@@ -540,8 +551,8 @@ ns_rcv_neigh(netns_p *ns, struct nlmsghdr *hdr)
 
   nd = NLMSG_DATA(hdr);
   if((datalen > NLMSG_ALIGN(sizeof(*nd))) &&
-      rtnl_parse_rtattr(rtas, NDA_MAX, NDA_RTA(nd),
-                        NDA_PAYLOAD(hdr))) {
+     rtnl_parse_rtattr(rtas, NDA_MAX, NDA_RTA(nd),
+                       NDA_PAYLOAD(hdr))) {
     return -1;
   }
 #ifdef RTNL_CHECK
@@ -571,10 +582,10 @@ ns_rcv_neigh(netns_p *ns, struct nlmsghdr *hdr)
   return 0;
 }
 
-#define ns_object_foreach    \
-  _(neighbors, NETNS_TYPE_NEIGH) \
-  _(routes, NETNS_TYPE_ROUTE)    \
-  _(addresses, NETNS_TYPE_ADDR)  \
+#define ns_object_foreach                       \
+  _(neighbors, NETNS_TYPE_NEIGH)                \
+  _(routes, NETNS_TYPE_ROUTE)                   \
+  _(addresses, NETNS_TYPE_ADDR)                 \
   _(links, NETNS_TYPE_LINK)
 
 static void
@@ -585,20 +596,20 @@ ns_recv_error(rtnl_error_t err, uword o)
   u32 *indexes = 0;
   u32 *i = 0;
 
-#define _(pool, type) \
-  pool_foreach_index(*i, ns->netns.pool, {                   \
-      vec_add1(indexes, *i);                                 \
-  })                                                         \
-  vec_foreach(i, indexes) {                                  \
-    pool_put_index(ns->netns.pool, *i);                      \
-    netns_notify(ns, &ns->netns.pool[*i], type, NETNS_F_DEL);\
-  }                                                          \
+#define _(pool, type)                                           \
+  pool_foreach_index(*i, ns->netns.pool, {                      \
+      vec_add1(indexes, *i);                                    \
+    })                                                          \
+    vec_foreach(i, indexes) {                                   \
+    pool_put_index(ns->netns.pool, *i);                         \
+    netns_notify(ns, &ns->netns.pool[*i], type, NETNS_F_DEL);   \
+  }                                                             \
   vec_reset_length(indexes);
 
   ns_object_foreach
 
 #undef _
-  vec_free(indexes);
+    vec_free(indexes);
 }
 
 static void
@@ -606,25 +617,25 @@ ns_recv_rtnl(struct nlmsghdr *hdr, uword o)
 {
   netns_p *ns = &netns_main.netnss[o];
   switch (hdr->nlmsg_type) {
-    case RTM_NEWROUTE:
-    case RTM_DELROUTE:
-      ns_rcv_route(ns, hdr);
-      break;
-    case RTM_NEWLINK:
-    case RTM_DELLINK:
-      ns_rcv_link(ns, hdr);
-      break;
-    case RTM_NEWADDR:
-    case RTM_DELADDR:
-      ns_rcv_addr(ns, hdr);
-      break;
-    case RTM_NEWNEIGH:
-    case RTM_DELNEIGH:
-      ns_rcv_neigh(ns, hdr);
-      break;
-    default:
-      clib_warning("unknown rtnl type %d", hdr->nlmsg_type);
-      break;
+  case RTM_NEWROUTE:
+  case RTM_DELROUTE:
+    ns_rcv_route(ns, hdr);
+    break;
+  case RTM_NEWLINK:
+  case RTM_DELLINK:
+    ns_rcv_link(ns, hdr);
+    break;
+  case RTM_NEWADDR:
+  case RTM_DELADDR:
+    ns_rcv_addr(ns, hdr);
+    break;
+  case RTM_NEWNEIGH:
+  case RTM_DELNEIGH:
+    ns_rcv_neigh(ns, hdr);
+    break;
+  default:
+    clib_warning("unknown rtnl type %d", hdr->nlmsg_type);
+    break;
   }
 }
 
@@ -648,16 +659,16 @@ netns_get(char *name)
   pool_foreach(ns, nm->netnss, {
       if (!strcmp(name, ns->netns.name))
         return ns;
-  });
+    });
 
   if (strlen(name) > RTNL_NETNS_NAMELEN)
     return NULL;
 
   pool_get(nm->netnss, ns);
   rtnl_stream_t s = {
-      .recv_message = ns_recv_rtnl,
-      .error = ns_recv_error,
-      .opaque = (uword)(ns - nm->netnss),
+    .recv_message = ns_recv_rtnl,
+    .error = ns_recv_error,
+    .opaque = (uword)(ns - nm->netnss),
   };
   strcpy(s.name, name);
 
@@ -721,30 +732,30 @@ void netns_callme(u32 handle, char del)
   if (!h->notify)
     return;
 
-#define _(pool, type) \
-  pool_foreach_index(i, ns->netns.pool, {                   \
-      h->notify(&ns->netns.pool[i], type,                   \
-      del?NETNS_F_DEL:NETNS_F_ADD, h->opaque);              \
-  });
+#define _(pool, type)                                           \
+  pool_foreach_index(i, ns->netns.pool, {                       \
+      h->notify(&ns->netns.pool[i], type,                       \
+                del?NETNS_F_DEL:NETNS_F_ADD, h->opaque);        \
+    });
 
   ns_object_foreach
 #undef _
 
-}
+    }
 
 u8 *format_ns_object(u8 *s, va_list *args)
 {
   netns_type_t t = va_arg(*args, netns_type_t);
   void *o = va_arg(*args, void *);
   switch (t) {
-    case NETNS_TYPE_ADDR:
-      return format(s, "addr %U", format_ns_addr, o);
-    case NETNS_TYPE_ROUTE:
-      return format(s, "route %U", format_ns_route, o);
-    case NETNS_TYPE_LINK:
-      return format(s, "link %U", format_ns_link, o);
-    case NETNS_TYPE_NEIGH:
-      return format(s, "neigh %U", format_ns_neigh, o);
+  case NETNS_TYPE_ADDR:
+    return format(s, "addr %U", format_ns_addr, o);
+  case NETNS_TYPE_ROUTE:
+    return format(s, "route %U", format_ns_route, o);
+  case NETNS_TYPE_LINK:
+    return format(s, "link %U", format_ns_link, o);
+  case NETNS_TYPE_NEIGH:
+    return format(s, "neigh %U", format_ns_neigh, o);
   }
   return s;
 }
