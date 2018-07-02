@@ -32,6 +32,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <errno.h>
+#include <string.h>
 
 #undef DBL_MAX
 #define DBL_MAX 1000000000.0
@@ -142,8 +143,10 @@ int rtnl_dump_request(rtnl_ns_t *ns, int type, void *req, size_t len)
     .msg_iov = iov,
     .msg_iovlen = 2,
   };
-  if(sendmsg(ns->rtnl_socket, &msg, 0) < 0)
+  if(sendmsg(ns->rtnl_socket, &msg, 0) < 0) {
+    clib_warning("sendmsg error: %s", strerror(errno));
     return -1;
+  }
   return 0;
 }
 

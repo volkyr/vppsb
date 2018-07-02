@@ -90,6 +90,14 @@ $vppctl show mpls fib
 
 You should see dst label and interface in mpls table.
 
+### Selinux
+
+Router plugin needs those rules to work under selinux enforcing mode:
+
+```
+allow vpp_t self:netlink_route_socket nlmsg_read;
+```
+
 ### Main contributors
 
 Jeff Shaw - LF-ID:jbshaw, Chad Chengwei Wang - LF-ID:flinter (MPLS)
