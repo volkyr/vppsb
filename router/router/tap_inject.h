@@ -20,7 +20,6 @@
 #include <vnet/plugin/plugin.h>
 #include <vnet/ip/ip.h>
 
-
 #ifndef ETHER_ADDR_LEN
 #define ETHER_ADDR_LEN 6
 #endif

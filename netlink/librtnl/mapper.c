@@ -18,13 +18,7 @@
 
 #include <vnet/ip/ip.h>
 #include <vnet/ip/lookup.h>
-
-#ifdef ip6_add_del_route_next_hop
-#define FIB_VERSION 1
-#else
 #include <vnet/fib/fib.h>
-#define FIB_VERSION 2
-#endif
 
 typedef struct {
   int linux_ifindex;
@@ -70,18 +64,6 @@ int mapper_add_del_route(mapper_ns_t *ns, ns_route_t *route, int del)
     if (route->rtm.rtm_dst_len >= 8 && route->dst[0] == 0xff)
       return 0;
 
-#if FIB_VERSION == 1
-    struct ip6_main_t *im = &ip6_main;
-    ip6_add_del_route_next_hop(im, //ip6_main
-                               del?IP6_ROUTE_FLAG_DEL:IP6_ROUTE_FLAG_ADD,  //flags (not del)
-                               (ip6_address_t *)&route->dst[0], //Dst addr
-                               route->rtm.rtm_dst_len, //Plen
-                               (ip6_address_t *)&route->gateway[0], //next-hop
-                               map->sw_if_index, //sw_if_index
-                               0, //weight
-                               ~0, //adj_index
-                               ns->v6fib_index);
-#else
     fib_prefix_t prefix;
     ip46_address_t nh;
 
@@ -99,20 +81,7 @@ int mapper_add_del_route(mapper_ns_t *ns, ns_route_t *route, int del)
                               0 /* weight */,
                               (fib_mpls_label_t *) MPLS_LABEL_INVALID,
                               FIB_ROUTE_PATH_FLAG_NONE);
-#endif /* FIB_VERSION == 1 */
   } else {
-#if FIB_VERSION == 1
-    struct ip4_main_t *im = &ip4_main;
-    ip4_add_del_route_next_hop(im, //ip4_main
-                               del?IP4_ROUTE_FLAG_DEL:IP4_ROUTE_FLAG_ADD,  //flags (not del)
-                               (ip4_address_t *)&route->dst[0], //Dst addr
-                               route->rtm.rtm_dst_len, //Plen
-                               (ip4_address_t *)&route->gateway[0], //next-hop
-                               map->sw_if_index, //sw_if_index
-                               0, //weight
-                               ~0, //adj_index
-                               ns->v4fib_index);
-#else
     fib_prefix_t prefix;
     ip46_address_t nh;
 
@@ -130,7 +99,6 @@ int mapper_add_del_route(mapper_ns_t *ns, ns_route_t *route, int del)
                               0 /* weight */,
                               (fib_mpls_label_t *) MPLS_LABEL_INVALID,
                               FIB_ROUTE_PATH_FLAG_NONE);
-#endif /* FIB_VERSION == 1 */
   }
 
   return 0;

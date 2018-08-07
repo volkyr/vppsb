@@ -19,12 +19,7 @@
 #include <vnet/mfib/mfib_table.h>
 #include <vnet/ip/ip.h>
 #include <vnet/ip/lookup.h>
-#ifdef ip6_add_del_route_next_hop
-#define FIB_VERSION 1
-#else
 #include <vnet/fib/fib.h>
-#define FIB_VERSION 2
-#endif
 
 static tap_inject_main_t tap_inject_main;
 extern dpo_type_t tap_inject_dpo_type;
@@ -146,36 +141,6 @@ tap_inject_enable (void)
   ip6_register_protocol (IP_PROTOCOL_TCP, im->tx_node_index);
   ip6_register_protocol (IP_PROTOCOL_UDP, im->tx_node_index);
 
-#if FIB_VERSION == 1
-  /* Add IPv4 multicast route. */
-  {
-    ip4_add_del_route_args_t a;
-    ip_adjacency_t add_adj;
-    u32 next_node_index;
-
-    memset (&a, 0, sizeof (a));
-    memset (&add_adj, 0, sizeof (add_adj));
-
-    a.add_adj = &add_adj;
-    a.n_add_adj = 1;
-
-    a.flags = IP4_ROUTE_FLAG_TABLE_ID | IP4_ROUTE_FLAG_ADD;
-    a.table_index_or_table_id = 0;
-    a.dst_address.as_u32 = 0x000000E0; /* 224.0.0.0 */
-    a.dst_address_length = 24;
-    a.adj_index = ~0;
-
-    next_node_index = vlib_node_add_next (vm, ip4_lookup_node.index,
-                                          im->tx_node_index);
-
-    add_adj.explicit_fib_index = ~0;
-    add_adj.rewrite_header.node_index = ip4_rewrite_node.index;
-    add_adj.lookup_next_index = next_node_index;
-    add_adj.if_address_index = ~0;
-
-    ip4_add_del_route (&ip4_main, &a);
-  }
-#else
   {
     dpo_id_t dpo = DPO_INVALID;
 
@@ -203,7 +168,6 @@ tap_inject_enable (void)
 
     dpo_reset(&dpo);
   }
-#endif /* FIB_VERSION == 1 */
 
   im->flags |= TAP_INJECT_F_ENABLED;
 
