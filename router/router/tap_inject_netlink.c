@@ -138,7 +138,7 @@ add_del_neigh (ns_neigh_t * n, int is_del)
         }
       else
         vnet_unset_ip6_ethernet_neighbor (vm, sw_if_index,
-                                          (ip6_address_t *) n->dst, n->lladdr, ETHER_ADDR_LEN);
+                                          (ip6_address_t *) n->dst);
     }
 }
 
